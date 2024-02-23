@@ -25,13 +25,13 @@ local_path = "nanodiag_datasets/GSE175758/"
 
 # neural network parameters
 SEED = 32
-n_epo = 50
-k_folds = 5
+n_epo = 5
+k_folds = 3
 batch_size = 32
 num_classes = 2
 gene_dim = 50
 learning_rate = 0.001
-n_edges = 500 #267186
+n_edges = 2000 #267186
 
 
 class GCN(torch.nn.Module):
@@ -269,25 +269,30 @@ def create_training_proc(compact_data, aml_ids, non_aml_ids, combine_aml_non_aml
     # set integer ids to genes
     print(probe_gene_id_mapping)
     print("Replacing gene ids...")
-    #all_gene_ids = combine_aml_non_aml_probe_features.replace({0: probe_gene_id_mapping})
     probe_ids = [probe_gene_id_mapping[i] for i in combine_aml_non_aml_probe_features.index.tolist()]
     combine_aml_non_aml_probe_features.insert(0, "probes", probe_ids)
     all_gene_ids = combine_aml_non_aml_probe_features
     print("All probes: ", all_gene_ids)
     print()
-    print("All probes[0]: ", all_gene_ids["probes"])
-    #sys.exit()
     # balanced data size for each class
     equal_size = int(batch_size / float(num_classes))
     
     aml_ids_list = aml_ids[0].tolist()
     non_aml_ids_list = non_aml_ids[0].tolist()
 
+    #print("AML Ids", aml_ids_list)
+    #print("Non-AML Ids", non_aml_ids_list)
+    #print()
+
     random.shuffle(aml_ids_list)
     random.shuffle(non_aml_ids_list)
 
-    aml_ids_list = np.reshape(non_aml_ids_list, (len(non_aml_ids_list), 1))
+    aml_ids_list = np.reshape(aml_ids_list, (len(aml_ids_list), 1))
     non_aml_ids_list = np.reshape(non_aml_ids_list, (len(non_aml_ids_list), 1))
+
+    #print("AML Ids", aml_ids_list)
+    #print("Non-AML Ids", non_aml_ids_list)
+    #print()
 
     # create cross-validation (CV) fold object
     kfold = KFold(n_splits=k_folds, shuffle=True)
@@ -316,7 +321,12 @@ def create_training_proc(compact_data, aml_ids, non_aml_ids, combine_aml_non_aml
         for fold, (aml_tr, non_aml_tr) in enumerate(zip(kfold.split(aml_ids_list), kfold.split(non_aml_ids_list))):
             aml_tr_ids, aml_te_ids = aml_tr
             non_aml_tr_ids, non_aml_te_ids = non_aml_tr
+            
+            #print("AML TR/TE", aml_tr_ids, aml_te_ids)
+            #print("Non-AML TR/TE", non_aml_tr_ids, non_aml_te_ids)
+            
             n_batches = int((len(aml_tr_ids) + len(non_aml_tr_ids) + 1) / float(batch_size))
+            
             # combine te genes
             aml_te_ids = np.reshape(aml_te_ids, (aml_te_ids.shape[0]))
             non_aml_te_ids = np.reshape(non_aml_te_ids, (non_aml_te_ids.shape[0]))
@@ -328,8 +338,12 @@ def create_training_proc(compact_data, aml_ids, non_aml_ids, combine_aml_non_aml
             # reshape
             aml_te_genes = list(np.reshape(aml_te_genes, (aml_te_genes.shape[0])))
             non_aml_te_genes = list(np.reshape(non_aml_te_genes, (non_aml_te_genes.shape[0])))
-            print("AML probes: {}, Non-AML probes: {}".format(len(aml_te_genes), len(non_aml_te_genes)))
-
+            
+            #print("AML Test probes", aml_te_genes)
+            #print("Non AML Test probes", non_aml_te_genes)
+            
+            #print("AML probes: {}, Non-AML probes: {}".format(len(aml_te_genes), len(non_aml_te_genes)))
+            #sys.exit()
             # create test masks
             # set test mask using test genes for drivers and passengers
             compact_data.test_mask = create_masks(all_gene_ids, aml_te_genes, non_aml_te_genes)
@@ -368,16 +382,16 @@ def create_training_proc(compact_data, aml_ids, non_aml_ids, combine_aml_non_aml
             # create list of driver and passenger genes
             test_aml_genes = np.reshape(aml_ids_list[aml_te_ids], (len(aml_ids_list[aml_te_ids]))).tolist()
             test_non_aml_genes = np.reshape(non_aml_ids_list[non_aml_te_ids], (len(non_aml_ids_list[non_aml_te_ids]))).tolist()
-            print("In predict data...")
-            print("Test probes: ", len(test_aml_genes), len(test_non_aml_genes))
+            #print("In predict data...")
+            #print("Test probes: ", len(test_aml_genes), len(test_non_aml_genes))
             # predict using trained model
             aml_cls_acc, aml_auprc, test_acc, _, _, _, _, _ = predict_data(model, compact_data, test_aml_genes, test_non_aml_genes)
             aml_auprc_fold.append(aml_auprc)
             aml_cls_acc_fold.append(aml_cls_acc)
             print("Epoch {}/{}, fold {}/{} average training loss: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(np.mean(batch_tr_loss))))
             print("Epoch: {}/{}, Fold: {}/{}, test accuracy: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(test_acc)))
-            print("Epoch: {}/{}, Fold: {}/{}, test per class accuracy, Driver: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(aml_cls_acc)))
-            print("Epoch: {}/{}, Fold: {}/{}, test AUPRC, Driver: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(aml_auprc)))
+            print("Epoch: {}/{}, Fold: {}/{}, test per class accuracy, AML: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(aml_cls_acc)))
+            print("Epoch: {}/{}, Fold: {}/{}, test AUPRC, AML: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(aml_auprc)))
             te_acc_fold.append(test_acc)
 
         print("-------------------")
@@ -392,6 +406,11 @@ def create_training_proc(compact_data, aml_ids, non_aml_ids, combine_aml_non_aml
         print("Epoch {}: Test AUPRC, AML: {}".format(str(epoch+1), str(np.mean(aml_auprc_fold))))
         print()
 
+    print("CV Training Loss after {} epochs: {}".format(str(n_epo), str(np.mean(tr_loss_epo))))
+    print("CV Test driver accuracy after {} epochs: {}".format(str(n_epo), str(np.mean(aml_cls_acc_epo))))
+    print("AML AUPRC after {} epochs: {}".format(str(n_epo), str(np.mean(aml_auprc_epo))))
+    plot_loss_acc(n_epo, tr_loss_epo, aml_cls_acc_epo)
+    
     # prepare test mask using all driver genes (# of driver genes are less)
     #compact_data.test_mask = create_masks(all_gene_ids, aml_ids[0].tolist(), non_aml_ids[0].tolist())
 
@@ -429,8 +448,7 @@ def predict_data(model, compact_data, test_driver_genes, test_passenger_genes):
     out = model(compact_data.x, compact_data.edge_index)
     pred = out[0].argmax(dim=1)
     test_correct = pred[compact_data.test_mask] == compact_data.y[compact_data.test_mask]
-    print(compact_data.test_mask.shape)
-    test_acc = int(test_correct.sum()) / float(len(test_driver_genes)) #int(compact_data.test_mask.sum())
+    test_acc = int(test_correct.sum()) / float(int(compact_data.test_mask.sum()))
     dr_cls_acc, auprc_wt, dr_fpr, dr_tpr, dr_precision, dr_recall, dr_roc_auc_score = agg_per_class_acc(out[0], pred, compact_data, test_driver_genes, test_passenger_genes)
     return dr_cls_acc, auprc_wt, test_acc, dr_fpr, dr_tpr, dr_precision, dr_recall, dr_roc_auc_score
 
@@ -443,15 +461,11 @@ def agg_per_class_acc(prob_scores, pred, data, driver_ids, passenger_ids):
     dr_corr = 0
     pass_tot = 0
     pass_corr = 0
-    print("AML Ids: ", driver_ids)
-    print()
-    print("Non AML Ids: ", passenger_ids)
-    print()
     prob_scores = prob_scores.detach().numpy()
     # extract probability scores for driver (positive class, repr as 1) and passenger (negative class, repr as 0) genes 
     dr_prob_scores = prob_scores[driver_ids]
     pass_prob_scores = prob_scores[passenger_ids]
-    print("Prob scores: ", len(dr_prob_scores), len(pass_prob_scores))
+    #print("Prob scores: ", len(dr_prob_scores), len(pass_prob_scores))
     # compute precision for driver genes
     for driver_id in driver_ids:
         if data.test_mask[driver_id] == torch.tensor(True):
@@ -474,7 +488,7 @@ def agg_per_class_acc(prob_scores, pred, data, driver_ids, passenger_ids):
     auprc_wt = average_precision_score(dr_pass_label, dr_pass_prob_scores[:, 1], average='weighted')
     print('AP', auprc_wt)
     
-    print("Driver prediction: Accuracy {}, # correctly predicted/total samples {}/{}".format(dr_pred_acc, dr_corr, dr_tot))
+    print("AML prediction: Accuracy {}, # correctly predicted/total samples {}/{}".format(dr_pred_acc, dr_corr, dr_tot))
     print()
     return dr_pred_acc, auprc_wt, dr_fpr, dr_tpr, dr_precision, dr_recall, dr_roc_auc_score
 
@@ -494,8 +508,6 @@ def get_top_genes(model, compact_data, test_driver_genes, top_genes=10):
                  corr_driver_genes[driver_id] = out[0][:, 1][driver_id].detach().numpy()
     s_top_genes = {k: v for k, v in sorted(corr_driver_genes.items(), key=lambda item: item[1], reverse=True)}
     print("Top 10 Driver genes: ", list(s_top_genes.keys())[:top_genes])
-    # [2609, 3501, 11659, 2641, 8759, 2502, 9911, 10645, 9067, 7315]
-    # 2609: "CTNNB1". More details: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6354055/#:~:text=Mutations%20in%20the%20%CE%B2%2Dcatenin,status%20of%20cancer%2Drelated%20genes.
     print("Find these ids in the gene_mapping.json file")
     
 
@@ -525,16 +537,16 @@ def plot_aml_prec_recall(fpr_epo, tpr_epo, dr_prec_epo, dr_recall_epo, dr_roc_au
     disp = PrecisionRecallDisplay(precision=dr_prec_epo, recall=dr_recall_epo, pos_label="AML").plot()
     plt.title("AML, Precision-Recall curve (all AML), AUPRC: {}".format(str(np.round(auprc_wt, 2))))
     plt.grid(True)
-    plt.savefig("plots/AML_{}_prc_all_drivers_links_{}_epo_{}.pdf".format(n_edges, n_epo), dpi=200)
-    plt.show()
+    plt.savefig(local_path + "AML_{}_prc_all_AML_links_{}_epo_{}.pdf".format(n_edges, n_epo), dpi=200)
+    #plt.show()
 
     # plot ROC
     roc_auc = sklearn.metrics.auc(fpr_epo, tpr_epo)
     roc_display = RocCurveDisplay(fpr=fpr_epo, tpr=tpr_epo, roc_auc=roc_auc).plot()
     plt.title("ROC curve (all AML)")
     plt.grid(True)
-    plt.savefig("plots/AML_roc_all_aml_links_{}_epo_{}.pdf".format("AML", n_edges, n_epo), dpi=200)
-    plt.show()
+    plt.savefig(local_path + "AML_roc_all_aml_links_{}_epo_{}.pdf".format("AML", n_edges, n_epo), dpi=200)
+    #plt.show()
 
 
 def plot_loss_acc(n_epo, tr_loss, te_acc):
@@ -544,10 +556,9 @@ def plot_loss_acc(n_epo, tr_loss, te_acc):
     plt.ylabel("Loss")
     plt.xlabel("Epochs")
     plt.grid(True)
-    plt.title("Cancer {}, {} fold CV training loss vs epochs".format(cancer_type, str(k_folds)))
-    plt.savefig("plots/cancer_{}_{}_fold_CV_driver_training_loss_links_{}_epo_{}.pdf".format(cancer_type, k_folds, n_edges, n_epo), dpi=200)
-    plt.show()
-
+    plt.title("{}, {} fold CV training loss vs epochs".format("AML", str(k_folds)))
+    plt.savefig(local_path + "{}_{}_fold_CV_AML_training_loss_links_{}_epo_{}.pdf".format("AML", k_folds, n_edges, n_epo), dpi=200)
+    #plt.show()
 
     # plot driver gene precision vs epochs
     x_val = np.arange(n_epo)
@@ -555,9 +566,9 @@ def plot_loss_acc(n_epo, tr_loss, te_acc):
     plt.ylabel("Accuracy")
     plt.xlabel("Epochs")
     plt.grid(True)
-    plt.title("Cancer {}, {} fold CV Driver pred accuracy vs epochs".format(cancer_type, str(k_folds)))
-    plt.savefig("plots/cancer_{}_{}_fold_CV_driver_test_accuracy_links_{}_epo_{}.pdf".format(cancer_type, k_folds, n_edges, n_epo), dpi=200)
-    plt.show()
+    plt.title("{}, {} fold CV AML pred accuracy vs epochs".format("AML", str(k_folds)))
+    plt.savefig(local_path + "AML_{}_fold_CV_test_accuracy_links_{}_epo_{}.pdf".format(k_folds, n_edges, n_epo), dpi=200)
+    #plt.show()
 
 
 if __name__ == "__main__":
