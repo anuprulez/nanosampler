@@ -29,7 +29,7 @@ n_epo = 50
 k_folds = 5
 batch_size = 32
 num_classes = 2
-gene_dim = 12
+gene_dim = 50
 learning_rate = 0.001
 n_edges = 500 #267186
 
@@ -60,61 +60,72 @@ class GCN(torch.nn.Module):
         return out, h
 
 
+def create_edges():
+    relation_threshold = 0.8
+    in_probe_relation = list()
+    out_probe_relation = list()
+    print("Loading Pearson correlation matrix...")
+    corr_mat = pd.read_csv(local_path + "df_pos_neg_probes_correlation_matrix.tsv", sep="\t", index_col=None)
+    print(corr_mat)
+    print()
+    del corr_mat[corr_mat.columns[0]]
+    print(corr_mat)
+    print()
+    probe_gene_names = corr_mat.columns
+    corr_mat_filtered = corr_mat > relation_threshold
+    print(corr_mat_filtered)
+    print()
+    print("Creating probe-gene relations...")
+    for index, col in enumerate(corr_mat_filtered.columns):
+        for item_idx, item in enumerate(corr_mat_filtered[col]):
+            if item == True and col != probe_gene_names[item_idx]:
+                in_probe_relation.append(col)
+                out_probe_relation.append(probe_gene_names[item_idx])
+    df_significant_gene_relation = pd.DataFrame(zip(in_probe_relation, out_probe_relation), columns=["In", "Out"])
+    df_significant_gene_relation.to_csv(local_path + "significant_gene_relation.tsv", sep="\t", index=False)
+    print(df_significant_gene_relation)
+
+def load_node_csv(path, index_col, encoders=None, **kwargs):
+    df = pd.read_csv(path, index_col=index_col, header=None)
+    mapping = {index: i for i, index in enumerate(df.index.unique())}
+    x = df.iloc[:, 0:]
+    return x, mapping
+
+def save_mapping_json(lp, mapping_file):
+    with open(lp, 'gene_mapping.json', 'w') as outfile:
+        outfile.write(json.dumps(mapping_file))
+
 def read_files():
     '''
     Read raw data files and create Pytorch dataset
     '''
-    final_path = local_path
-    aml_probes_genes = pd.read_csv(local_path + "positive_probes_genes.tsv", sep="\t", header=None)
-    print("Positive AML probes")
-    aml_probes_genes = aml_probes_genes[0].tolist()[1:]
-    print(len(aml_probes_genes))
-    print()
-    non_aml_probes_genes = pd.read_csv(local_path + "negative_probes_genes.tsv", sep="\t", header=None)
-    print("Negative AML probes")
-    non_aml_probes_genes = non_aml_probes_genes[0].tolist()[1:]
-    print(len(non_aml_probes_genes))
-    print()
-    print("AML probe features")
-    aml_probes_features = pd.read_csv(local_path + "positive_signals.tsv", sep="\t")
-    print(aml_probes_features)
-    print()
-    print("Non-AML probe features")
-    non_aml_probe_features = pd.read_csv(local_path + "balanced_negative_signals.tsv", sep="\t")
-    print(non_aml_probe_features)
-    print()
-    probes_correlation_matrix = pd.read_csv(local_path + "df_pos_neg_probes_correlation_matrix.tsv", sep="\t")
-    print(probes_correlation_matrix)
-    print()
-    probe_ids_mapping = pd.read_csv(local_path + "probe_genes_mapping_id.tsv", sep="\t")
-    print(probe_ids_mapping)
-    print()
     
-    
-    '''gene_features = pd.read_csv(final_path + "gene_features", header=None)
+    '''final_path = local_path + "old_gnn/"
+    gene_features = pd.read_csv(final_path + "gene_features", header=None)
     links = pd.read_csv(final_path + "links", header=None)
     passengers = pd.read_csv(final_path + "passengers", header=None)
-    print("AML genes")
+    driver = pd.read_csv(final_path + "drivers", header=None)
+    print("Driver genes")
     print(driver)
     print()
     print("----")
-    print("Non-AML genes")
+    print("Passenger genes")
     print(passengers)
     print("----")
     print()
-    print("Gene embeddings")
-    print(gene_features)
-    print("----")
-    print()
+    #print("Gene embeddings")
+    #print(gene_features)
+    #print("----")
+    #print()
     print("Gene links")
     print(links)
     print("----")
     
-
     driver_gene_list = driver[0].tolist()
     passenger_gene_list = passengers[0].tolist()
 
     x, mapping = load_node_csv(final_path + "gene_features", 0)
+    print(mapping)
     y = torch.zeros(x.shape[0], dtype=torch.long)
     # assign all labels to -1
     y[:] = -1
@@ -125,8 +136,8 @@ def read_files():
     y[driver_ids[0].tolist()] = 1
     y[passenger_ids[0].tolist()] = 0
 
-    print("Saving mapping...")
-    save_mapping_json(mapping)
+    #print("Saving mapping...")
+    #save_mapping_json(mapping)
 
     print("replacing gene ids")
     # set number of edges
@@ -141,14 +152,113 @@ def read_files():
     compact_data = Data(x=x, edge_index=edge_index.t().contiguous())
     # set up true labels
     compact_data.y = y
-    return compact_data, driver_ids, passenger_ids, gene_features, mapping'''
+    return compact_data, driver_ids, passenger_ids, gene_features, mapping
+    print("--------------------------------------------------")'''
+    
+    final_path = local_path
+    df_aml_probes_genes = pd.read_csv(local_path + "positive_probes_genes.tsv", sep="\t", header=None)
+    df_aml_probes_genes = df_aml_probes_genes[1:]
+    print("Positive AML probes")
+    aml_probes_genes = df_aml_probes_genes[0].tolist()[1:]
+    print(df_aml_probes_genes)
+    print()
+    df_non_aml_probes_genes = pd.read_csv(local_path + "negative_probes_genes.tsv", sep="\t", header=None)
+    df_non_aml_probes_genes = df_non_aml_probes_genes[1:]
+    print("Negative AML probes")
+    non_aml_probes_genes = df_non_aml_probes_genes[0].tolist()[1:]
+    print(df_non_aml_probes_genes)
+    #print()
+    #print("AML probe features")
+    aml_probes_features = pd.read_csv(local_path + "positive_signals.tsv", sep="\t")
+    #print(aml_probes_features)
+    #print()
+    aml_probes_features_T = aml_probes_features.transpose()
+    #print(aml_probes_features_T)
+    #print()
+    #print("Non-AML probe features")
+    non_aml_probe_features = pd.read_csv(local_path + "balanced_negative_signals.tsv", sep="\t")
+    #print(non_aml_probe_features)
+    #print()
+    non_aml_probe_features_T = non_aml_probe_features.transpose()
+    print(non_aml_probe_features_T)
+    #print()
+    #print("Probes correlation matrix")
+    probes_correlation_matrix = pd.read_csv(local_path + "df_pos_neg_probes_correlation_matrix.tsv", sep="\t")
+    #print(probes_correlation_matrix)
+    #print()
+    print("Probe name and ids mapping")
+    probe_ids_mapping = pd.read_csv(local_path + "probe_genes_mapping_id.tsv", sep="\t")
+    print(probe_ids_mapping)
+    print()
+    print("Probe genes relations")
+    relations_probe_ids = pd.read_csv(local_path + "significant_gene_relation.tsv", sep="\t", header=None)
+    relations_probe_ids = relations_probe_ids[1:]
+    print(relations_probe_ids)
+    print()
+    
+    #aml_gene_list = df_aml_probes_genes[0].tolist()
+    #non_aml_gene_list = df_non_aml_probes_genes[0].tolist()
+
+    #x, mapping = load_node_csv(local + "gene_features", 0)
+    combine_aml_non_aml_probe_features = pd.concat([aml_probes_features_T, non_aml_probe_features_T], axis=0)
+    print(combine_aml_non_aml_probe_features)
+    
+    #probe_gene_id_mapping = {probe_gene_name: probe_ids_mapping[probe_ids_mapping["name"] == probe_gene_name]["id"] for i, probe_gene_name in enumerate(combine_aml_non_aml_probe_features.index.unique())}
+
+    probe_gene_id_mapping = {index: i for i, index in enumerate(combine_aml_non_aml_probe_features.index.unique())}
+    x = combine_aml_non_aml_probe_features #.iloc[:, 0:]
+    print(x.shape, x)
+    
+    y = torch.zeros(x.shape[0], dtype=torch.long)
+    # assign all labels to -1
+    y[:] = -1
+    aml_probes_genes_ids = df_aml_probes_genes.replace({0: probe_gene_id_mapping})
+    non_aml_probes_genes_ids = df_non_aml_probes_genes.replace({0: probe_gene_id_mapping})
+    print("AML/Non AML probe gene ids")
+    print()
+    print(aml_probes_genes_ids)
+    print()
+    print(non_aml_probes_genes_ids)
+    print()
+
+    # aml = 1, non-aml = 0
+    y[aml_probes_genes_ids[0].tolist()] = 1
+    y[non_aml_probes_genes_ids[0].tolist()] = 0
+
+    #print("Saving mapping...")
+    #save_mapping_json(mapping)
+
+    print("replacing gene ids")
+    # set number of edges
+    links = relations_probe_ids[:n_edges]
+    print("Filtered relations:")
+    print(links)
+    print()
+    
+    # replace gene names with ids, only the first two columns
+    links = links.replace({0: probe_gene_id_mapping})
+    links_relation_probes = links.replace({1: probe_gene_id_mapping})
+
+    print(links_relation_probes)
+    
+    # create data object
+    x = torch.tensor(x.loc[:, 0:].to_numpy(), dtype=torch.float)
+    edge_index = torch.tensor(links_relation_probes.to_numpy(), dtype=torch.long)
+    # set up Pytorch geometric dataset
+    compact_data = Data(x=x, edge_index=edge_index.t().contiguous())
+    # set up true labels
+    compact_data.y = y
+
+    return compact_data, aml_probes_genes_ids, non_aml_probes_genes_ids, combine_aml_non_aml_probe_features, probe_gene_id_mapping
 
 
-def create_training_proc(compact_data, driver_ids, passenger_ids, gene_features, mapping):
+def create_training_proc(compact_data, aml_ids, non_aml_ids, combine_aml_non_aml_probe_features, probe_gene_id_mapping):
     '''
     Create network architecture and assign loss, optimizers ...
     '''
+    print("Compact data")
     print(compact_data)
+    print("Initialize model")
     # initialize model
     model = GCN()
     print(model)
@@ -157,141 +267,172 @@ def create_training_proc(compact_data, driver_ids, passenger_ids, gene_features,
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     # set integer ids to genes
+    print(probe_gene_id_mapping)
     print("Replacing gene ids...")
-    all_gene_ids = gene_features.replace({0: mapping})
+    #all_gene_ids = combine_aml_non_aml_probe_features.replace({0: probe_gene_id_mapping})
+    probe_ids = [probe_gene_id_mapping[i] for i in combine_aml_non_aml_probe_features.index.tolist()]
+    combine_aml_non_aml_probe_features.insert(0, "probes", probe_ids)
+    all_gene_ids = combine_aml_non_aml_probe_features
+    print("All probes: ", all_gene_ids)
+    print()
+    print("All probes[0]: ", all_gene_ids["probes"])
+    #sys.exit()
     # balanced data size for each class
     equal_size = int(batch_size / float(num_classes))
     
-    driver_ids_list = driver_ids[0].tolist()
-    passenger_ids_list = passenger_ids[0].tolist()
+    aml_ids_list = aml_ids[0].tolist()
+    non_aml_ids_list = non_aml_ids[0].tolist()
 
-    random.shuffle(driver_ids_list)
-    random.shuffle(passenger_ids_list)
+    random.shuffle(aml_ids_list)
+    random.shuffle(non_aml_ids_list)
 
-    driver_ids_list = np.reshape(driver_ids_list, (len(driver_ids_list), 1))
-    passenger_ids_list = np.reshape(passenger_ids_list, (len(passenger_ids_list), 1))
+    aml_ids_list = np.reshape(non_aml_ids_list, (len(non_aml_ids_list), 1))
+    non_aml_ids_list = np.reshape(non_aml_ids_list, (len(non_aml_ids_list), 1))
 
-    # create cross validation (CV) fold object
+    # create cross-validation (CV) fold object
     kfold = KFold(n_splits=k_folds, shuffle=True)
 
     tr_loss_epo = list()
     te_acc_epo = list()
-    dr_cls_acc_epo = list()
-    dr_prec_epo = list()
-    dr_recall_epo = list()
-    dr_fpr_epo = list()
-    dr_tpr_epo = list()
-    dr_auprc_epo = list()
+    aml_cls_acc_epo = list()
+    aml_prec_epo = list()
+    aml_recall_epo = list()
+    aml_fpr_epo = list()
+    aml_tpr_epo = list()
+    aml_auprc_epo = list()
+    
     # loop over epochs
     for epoch in range(n_epo):
         tr_loss_fold = list()
         te_acc_fold = list()
-        dr_cls_acc_fold = list()
-        dr_fpr = list()
-        dr_tpr = list()
-        dr_prec = list()
-        dr_recall = list()
-        dr_auprc_fold = list()
+        aml_cls_acc_fold = list()
+        aml_fpr = list()
+        aml_tpr = list()
+        aml_prec = list()
+        aml_recall = list()
+        aml_auprc_fold = list()
         # loop over folds
         # extract training and test for driver and passenger genes separately and then combine
-        for fold, (dr_tr, pass_tr) in enumerate(zip(kfold.split(driver_ids_list), kfold.split(passenger_ids_list))):
-            dr_tr_ids, dr_te_ids = dr_tr
-            pass_tr_ids, pass_te_ids = pass_tr
-            n_batches = int((len(dr_tr_ids) + len(pass_tr_ids) + 1) / float(batch_size))
+        for fold, (aml_tr, non_aml_tr) in enumerate(zip(kfold.split(aml_ids_list), kfold.split(non_aml_ids_list))):
+            aml_tr_ids, aml_te_ids = aml_tr
+            non_aml_tr_ids, non_aml_te_ids = non_aml_tr
+            n_batches = int((len(aml_tr_ids) + len(non_aml_tr_ids) + 1) / float(batch_size))
             # combine te genes
-            dr_te_ids = np.reshape(dr_te_ids, (dr_te_ids.shape[0]))
-            pass_te_ids = np.reshape(pass_te_ids, (pass_te_ids.shape[0]))
+            aml_te_ids = np.reshape(aml_te_ids, (aml_te_ids.shape[0]))
+            non_aml_te_ids = np.reshape(non_aml_te_ids, (non_aml_te_ids.shape[0]))
 
             # extract gene ids
-            dr_te_genes = driver_ids_list[dr_te_ids]
-            pass_te_genes = passenger_ids_list[pass_te_ids]
+            aml_te_genes = aml_ids_list[aml_te_ids]
+            non_aml_te_genes = non_aml_ids_list[non_aml_te_ids]
 
             # reshape
-            dr_te_genes = list(np.reshape(dr_te_genes, (dr_te_genes.shape[0])))
-            pass_te_genes = list(np.reshape(pass_te_genes, (pass_te_genes.shape[0])))
+            aml_te_genes = list(np.reshape(aml_te_genes, (aml_te_genes.shape[0])))
+            non_aml_te_genes = list(np.reshape(non_aml_te_genes, (non_aml_te_genes.shape[0])))
+            print("AML probes: {}, Non-AML probes: {}".format(len(aml_te_genes), len(non_aml_te_genes)))
 
             # create test masks
             # set test mask using test genes for drivers and passengers
-            compact_data.test_mask = create_masks(all_gene_ids, dr_te_genes, pass_te_genes)
+            compact_data.test_mask = create_masks(all_gene_ids, aml_te_genes, non_aml_te_genes)
 
             batch_tr_loss = list()
             # loop over batches
+            print("Start training...")
             for bat in range(n_batches):
-                random.shuffle(dr_tr_ids)
-                random.shuffle(pass_tr_ids)
-                batch_dr_tr_genes = driver_ids_list[dr_tr_ids]
-                batch_dr_tr_genes = list(batch_dr_tr_genes.reshape((batch_dr_tr_genes.shape[0])))
+                random.shuffle(aml_tr_ids)
+                random.shuffle(non_aml_tr_ids)
+                batch_aml_tr_genes = aml_ids_list[aml_tr_ids]
+                batch_aml_tr_genes = list(batch_aml_tr_genes.reshape((batch_aml_tr_genes.shape[0])))
                 # balance train batches for both classes
-                if len(batch_dr_tr_genes) < equal_size:
+                if len(batch_aml_tr_genes) < equal_size:
                     # oversample by choosing with replacement
-                    batch_dr_tr_genes = list(np.random.choice(batch_dr_tr_genes, size=equal_size))
+                    batch_aml_tr_genes = list(np.random.choice(batch_aml_tr_genes, size=equal_size))
                 else:
-                    batch_dr_tr_genes = batch_dr_tr_genes[:int(batch_size / float(2))]
-                batch_pass_tr_genes = passenger_ids_list[pass_tr_ids]
-                batch_pass_tr_genes = batch_pass_tr_genes.reshape((batch_pass_tr_genes.shape[0]))
-                if len(batch_pass_tr_genes) < equal_size:
+                    batch_aml_tr_genes = batch_aml_tr_genes[:int(batch_size / float(2))]
+                    
+                batch_non_aml_tr_genes = non_aml_ids_list[non_aml_tr_ids]
+                batch_non_aml_tr_genes = batch_non_aml_tr_genes.reshape((batch_non_aml_tr_genes.shape[0]))
+                
+                if len(batch_non_aml_tr_genes) < equal_size:
                     # oversample by choosing with replacement
-                    batch_pass_tr_genes = list(np.random.choice(batch_pass_tr_genes, size=equal_size))
+                    batch_non_aml_tr_genes = list(np.random.choice(batch_non_aml_tr_genes, size=equal_size))
                 else:
-                    batch_pass_tr_genes = batch_pass_tr_genes[:int(batch_size / float(2))]
+                    batch_non_aml_tr_genes = batch_non_aml_tr_genes[:int(batch_size / float(2))]
                 # set training mask using drivers and passengers genes with data balancing for each batch
-                compact_data.train_mask = create_masks(all_gene_ids, batch_dr_tr_genes, batch_pass_tr_genes)
+                compact_data.train_mask = create_masks(all_gene_ids, batch_aml_tr_genes, batch_non_aml_tr_genes)
                 # training for each batch
+                
                 tr_loss, h = train(compact_data, optimizer, model, criterion)
                 batch_tr_loss.append(tr_loss.detach().numpy())
             tr_loss_fold.append(np.mean(batch_tr_loss))
 
             # create list of driver and passenger genes
-            test_driver_genes = np.reshape(driver_ids_list[dr_te_ids], (len(driver_ids_list[dr_te_ids]))).tolist()
-            test_passenger_genes = np.reshape(passenger_ids_list[pass_te_ids], (len(passenger_ids_list[pass_te_ids]))).tolist()
+            test_aml_genes = np.reshape(aml_ids_list[aml_te_ids], (len(aml_ids_list[aml_te_ids]))).tolist()
+            test_non_aml_genes = np.reshape(non_aml_ids_list[non_aml_te_ids], (len(non_aml_ids_list[non_aml_te_ids]))).tolist()
+            print("In predict data...")
+            print("Test probes: ", len(test_aml_genes), len(test_non_aml_genes))
             # predict using trained model
-            dr_cls_acc, dr_auprc, test_acc, _, _, _, _, _ = predict_data(model, compact_data, test_driver_genes, test_passenger_genes)
-            dr_auprc_fold.append(dr_auprc)
-            dr_cls_acc_fold.append(dr_cls_acc)
+            aml_cls_acc, aml_auprc, test_acc, _, _, _, _, _ = predict_data(model, compact_data, test_aml_genes, test_non_aml_genes)
+            aml_auprc_fold.append(aml_auprc)
+            aml_cls_acc_fold.append(aml_cls_acc)
             print("Epoch {}/{}, fold {}/{} average training loss: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(np.mean(batch_tr_loss))))
             print("Epoch: {}/{}, Fold: {}/{}, test accuracy: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(test_acc)))
-            print("Epoch: {}/{}, Fold: {}/{}, test per class accuracy, Driver: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(dr_cls_acc)))
-            print("Epoch: {}/{}, Fold: {}/{}, test AUPRC, Driver: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(dr_auprc)))
+            print("Epoch: {}/{}, Fold: {}/{}, test per class accuracy, Driver: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(aml_cls_acc)))
+            print("Epoch: {}/{}, Fold: {}/{}, test AUPRC, Driver: {}".format(str(epoch+1), str(n_epo), str(fold+1), str(k_folds), str(aml_auprc)))
             te_acc_fold.append(test_acc)
 
         print("-------------------")
         tr_loss_epo.append(np.mean(tr_loss_fold))
         te_acc_epo.append(np.mean(te_acc_fold))
-        dr_cls_acc_epo.append(np.mean(dr_cls_acc_fold))
-        dr_auprc_epo.append(np.mean(dr_auprc_fold))
+        aml_cls_acc_epo.append(np.mean(aml_cls_acc_fold))
+        aml_auprc_epo.append(np.mean(aml_auprc_fold))
         print()
         print("Epoch {}: Training Loss: {}".format(str(epoch+1), str(np.mean(tr_loss_fold))))
         print("Epoch {}: Test accuracy: {}".format(str(epoch+1), str(np.mean(te_acc_fold))))
-        print("Epoch {}: Test per class accuracy, Driver: {}".format(str(epoch+1), str(np.mean(dr_cls_acc_fold))))
-        print("Epoch {}: Test AUPRC, Driver: {}".format(str(epoch+1), str(np.mean(dr_auprc_fold))))
+        print("Epoch {}: Test per class accuracy, AML: {}".format(str(epoch+1), str(np.mean(aml_cls_acc_fold))))
+        print("Epoch {}: Test AUPRC, AML: {}".format(str(epoch+1), str(np.mean(aml_auprc_fold))))
         print()
 
     # prepare test mask using all driver genes (# of driver genes are less)
-    compact_data.test_mask = create_masks(all_gene_ids, driver_ids[0].tolist(), passenger_ids[0].tolist())
+    #compact_data.test_mask = create_masks(all_gene_ids, aml_ids[0].tolist(), non_aml_ids[0].tolist())
 
     # compute accuracy on all driver genes using trained model
-    dr_com_acc, auprc_wt, te_acc, dr_com_fpr, dr_com_tpr, dr_com_prec, dr_com_rec, dr_roc_auc_score = predict_data(model, compact_data, driver_ids[0].tolist(), passenger_ids[0].tolist())
+    #aml_com_acc, auprc_wt, te_acc, aml_com_fpr, aml_com_tpr, aml_com_prec, aml_com_rec, aml_roc_auc_score = predict_data(model, compact_data, aml_ids[0].tolist(), non_aml_ids[0].tolist())
 
-    print("CV Training Loss after {} epochs: {}".format(str(n_epo), str(np.mean(tr_loss_epo))))
-    print("CV Test driver accuracy after {} epochs: {}".format(str(n_epo), str(np.mean(dr_cls_acc_epo))))
-    print("Driver AUPRC after {} epochs: {}".format(str(n_epo), str(np.mean(dr_auprc_epo))))
+    #print("CV Training Loss after {} epochs: {}".format(str(n_epo), str(np.mean(tr_loss_epo))))
+    #print("CV Test driver accuracy after {} epochs: {}".format(str(n_epo), str(np.mean(aml_cls_acc_epo))))
+    #print("AML AUPRC after {} epochs: {}".format(str(n_epo), str(np.mean(aml_auprc_epo))))
 
     # create plots
-    plot_dr_prec_recall(dr_com_fpr, dr_com_tpr, dr_com_prec, dr_com_rec, dr_roc_auc_score, auprc_wt)
-    plot_loss_acc(n_epo, tr_loss_epo, dr_cls_acc_epo)
+    #plot_aml_prec_recall(aml_com_fpr, aml_com_tpr, aml_com_prec, aml_com_rec, aml_roc_auc_score, auprc_wt)
+    #plot_loss_acc(n_epo, tr_loss_epo, aml_cls_acc_epo)
 
     # select top genes
-    top_dr_gene_ids = get_top_genes(model, compact_data, driver_ids[0].tolist())
+    #top_dr_gene_ids = get_top_genes(model, compact_data, driver_ids[0].tolist())
 
     # predict labels of unlabeled nodes
     # TODO:
 
 
-def load_node_csv(path, index_col, encoders=None, **kwargs):
-    df = pd.read_csv(path, index_col=index_col, header=None)
-    mapping = {index: i for i, index in enumerate(df.index.unique())}
-    x = df.iloc[:, 0:]
-    return x, mapping
+def create_masks(all_gene_ids, dr_te_genes, pass_te_genes):
+    dr_te_genes.extend(pass_te_genes)
+    te_mask = all_gene_ids["probes"].isin(dr_te_genes)
+    te_mask = torch.tensor(te_mask, dtype=torch.bool)
+    return te_mask
+
+
+def predict_data(model, compact_data, test_driver_genes, test_passenger_genes):
+    '''
+    Predict using trained model and test data
+    '''
+    # predict on test fold
+    model.eval()
+    out = model(compact_data.x, compact_data.edge_index)
+    pred = out[0].argmax(dim=1)
+    test_correct = pred[compact_data.test_mask] == compact_data.y[compact_data.test_mask]
+    print(compact_data.test_mask.shape)
+    test_acc = int(test_correct.sum()) / float(len(test_driver_genes)) #int(compact_data.test_mask.sum())
+    dr_cls_acc, auprc_wt, dr_fpr, dr_tpr, dr_precision, dr_recall, dr_roc_auc_score = agg_per_class_acc(out[0], pred, compact_data, test_driver_genes, test_passenger_genes)
+    return dr_cls_acc, auprc_wt, test_acc, dr_fpr, dr_tpr, dr_precision, dr_recall, dr_roc_auc_score
 
 
 def agg_per_class_acc(prob_scores, pred, data, driver_ids, passenger_ids):
@@ -302,12 +443,15 @@ def agg_per_class_acc(prob_scores, pred, data, driver_ids, passenger_ids):
     dr_corr = 0
     pass_tot = 0
     pass_corr = 0
-
+    print("AML Ids: ", driver_ids)
+    print()
+    print("Non AML Ids: ", passenger_ids)
+    print()
     prob_scores = prob_scores.detach().numpy()
     # extract probability scores for driver (positive class, repr as 1) and passenger (negative class, repr as 0) genes 
     dr_prob_scores = prob_scores[driver_ids]
     pass_prob_scores = prob_scores[passenger_ids]
-
+    print("Prob scores: ", len(dr_prob_scores), len(pass_prob_scores))
     # compute precision for driver genes
     for driver_id in driver_ids:
         if data.test_mask[driver_id] == torch.tensor(True):
@@ -333,32 +477,6 @@ def agg_per_class_acc(prob_scores, pred, data, driver_ids, passenger_ids):
     print("Driver prediction: Accuracy {}, # correctly predicted/total samples {}/{}".format(dr_pred_acc, dr_corr, dr_tot))
     print()
     return dr_pred_acc, auprc_wt, dr_fpr, dr_tpr, dr_precision, dr_recall, dr_roc_auc_score
-
-
-def create_masks(all_gene_ids, dr_te_genes, pass_te_genes):
-    dr_te_genes.extend(pass_te_genes)
-    te_mask = all_gene_ids[0].isin(dr_te_genes)
-    te_mask = torch.tensor(te_mask, dtype=torch.bool)
-    return te_mask
-
-
-def predict_data(model, compact_data, test_driver_genes, test_passenger_genes):
-    '''
-    Predict using trained model and test data
-    '''
-    # predict on test fold
-    model.eval()
-    out = model(compact_data.x, compact_data.edge_index)
-    pred = out[0].argmax(dim=1)
-    test_correct = pred[compact_data.test_mask] == compact_data.y[compact_data.test_mask]
-    test_acc = int(test_correct.sum()) / int(compact_data.test_mask.sum())
-    dr_cls_acc, auprc_wt, dr_fpr, dr_tpr, dr_precision, dr_recall, dr_roc_auc_score = agg_per_class_acc(out[0], pred, compact_data, test_driver_genes, test_passenger_genes)
-    return dr_cls_acc, auprc_wt, test_acc, dr_fpr, dr_tpr, dr_precision, dr_recall, dr_roc_auc_score
-
-
-def save_mapping_json(mapping_file):
-    with open('gene_mapping.json', 'w') as outfile:
-        outfile.write(json.dumps(mapping_file))
 
 
 def get_top_genes(model, compact_data, test_driver_genes, top_genes=10):
@@ -401,21 +519,21 @@ def train(data, optimizer, model, criterion):
 ########################
 # Plotting methods
 ########################
-def plot_dr_prec_recall(fpr_epo, tpr_epo, dr_prec_epo, dr_recall_epo, dr_roc_auc_score, auprc_wt):
+def plot_aml_prec_recall(fpr_epo, tpr_epo, dr_prec_epo, dr_recall_epo, dr_roc_auc_score, auprc_wt):
 
     # plot precision, recall curve
-    disp = PrecisionRecallDisplay(precision=dr_prec_epo, recall=dr_recall_epo, pos_label="Driver").plot()
-    plt.title("Cancer {}, Precision-Recall curve (all drivers), AUPRC: {}".format(cancer_type, str(np.round(auprc_wt, 2))))
+    disp = PrecisionRecallDisplay(precision=dr_prec_epo, recall=dr_recall_epo, pos_label="AML").plot()
+    plt.title("AML, Precision-Recall curve (all AML), AUPRC: {}".format(str(np.round(auprc_wt, 2))))
     plt.grid(True)
-    plt.savefig("plots/cancer_{}_prc_all_drivers_links_{}_epo_{}.pdf".format(cancer_type, n_edges, n_epo), dpi=200)
+    plt.savefig("plots/AML_{}_prc_all_drivers_links_{}_epo_{}.pdf".format(n_edges, n_epo), dpi=200)
     plt.show()
 
     # plot ROC
     roc_auc = sklearn.metrics.auc(fpr_epo, tpr_epo)
     roc_display = RocCurveDisplay(fpr=fpr_epo, tpr=tpr_epo, roc_auc=roc_auc).plot()
-    plt.title("Cancer {}, ROC curve (all drivers)".format(cancer_type))
+    plt.title("ROC curve (all AML)")
     plt.grid(True)
-    plt.savefig("plots/cancer_{}_roc_all_drivers_links_{}_epo_{}.pdf".format(cancer_type, n_edges, n_epo), dpi=200)
+    plt.savefig("plots/AML_roc_all_aml_links_{}_epo_{}.pdf".format("AML", n_edges, n_epo), dpi=200)
     plt.show()
 
 
@@ -443,5 +561,8 @@ def plot_loss_acc(n_epo, tr_loss, te_acc):
 
 
 if __name__ == "__main__":
-    compact_data, aml_genes_ids, non_aml_gene_ids, probe_gene_features, mapping = read_files()
-    #create_training_proc(compact_data, driver_ids, passenger_ids, gene_features, mapping)
+    #create_edges()
+    #compact_data, aml_genes_ids, non_aml_gene_ids, probe_gene_features, mapping = read_files()
+    #create_training_proc(compact_data, aml_genes_ids, non_aml_gene_ids, probe_gene_features, mapping)
+    compact_data, driver_ids, passenger_ids, gene_features, mapping = read_files()
+    create_training_proc(compact_data, driver_ids, passenger_ids, gene_features, mapping)
