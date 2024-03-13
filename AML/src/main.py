@@ -25,13 +25,13 @@ local_path = "nanodiag_datasets/GSE175758/"
 
 # neural network parameters
 SEED = 32
-n_epo = 5
-k_folds = 3
+n_epo = 50
+k_folds = 5
 batch_size = 32
 num_classes = 2
-gene_dim = 50
+gene_dim = 34
 learning_rate = 0.001
-n_edges = 2000 #267186
+n_edges = 738000 #267186
 
 
 class GCN(torch.nn.Module):
@@ -99,61 +99,6 @@ def read_files():
     '''
     Read raw data files and create Pytorch dataset
     '''
-    
-    '''final_path = local_path + "old_gnn/"
-    gene_features = pd.read_csv(final_path + "gene_features", header=None)
-    links = pd.read_csv(final_path + "links", header=None)
-    passengers = pd.read_csv(final_path + "passengers", header=None)
-    driver = pd.read_csv(final_path + "drivers", header=None)
-    print("Driver genes")
-    print(driver)
-    print()
-    print("----")
-    print("Passenger genes")
-    print(passengers)
-    print("----")
-    print()
-    #print("Gene embeddings")
-    #print(gene_features)
-    #print("----")
-    #print()
-    print("Gene links")
-    print(links)
-    print("----")
-    
-    driver_gene_list = driver[0].tolist()
-    passenger_gene_list = passengers[0].tolist()
-
-    x, mapping = load_node_csv(final_path + "gene_features", 0)
-    print(mapping)
-    y = torch.zeros(x.shape[0], dtype=torch.long)
-    # assign all labels to -1
-    y[:] = -1
-    driver_ids = driver.replace({0: mapping})
-    passenger_ids = passengers.replace({0: mapping})
-
-    # driver = 1, passenger = 0
-    y[driver_ids[0].tolist()] = 1
-    y[passenger_ids[0].tolist()] = 0
-
-    #print("Saving mapping...")
-    #save_mapping_json(mapping)
-
-    print("replacing gene ids")
-    # set number of edges
-    links = links[:n_edges]
-    # replace gene names with ids, only the first two columns
-    re_links = links.replace({0: mapping})
-    re_links = re_links.replace({1: mapping})
-    # create data object
-    x = torch.tensor(x.loc[:, 1:].to_numpy(), dtype=torch.float)
-    edge_index = torch.tensor(re_links.to_numpy(), dtype=torch.long)
-    # set up Pytorch geometric dataset
-    compact_data = Data(x=x, edge_index=edge_index.t().contiguous())
-    # set up true labels
-    compact_data.y = y
-    return compact_data, driver_ids, passenger_ids, gene_features, mapping
-    print("--------------------------------------------------")'''
     
     final_path = local_path
     df_aml_probes_genes = pd.read_csv(local_path + "positive_probes_genes.tsv", sep="\t", header=None)
@@ -256,8 +201,11 @@ def create_training_proc(compact_data, aml_ids, non_aml_ids, combine_aml_non_aml
     '''
     Create network architecture and assign loss, optimizers ...
     '''
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(device)
     print("Compact data")
     print(compact_data)
+    #compact_data = compact_data.to(device)
     print("Initialize model")
     # initialize model
     model = GCN()
@@ -572,8 +520,9 @@ def plot_loss_acc(n_epo, tr_loss, te_acc):
 
 
 if __name__ == "__main__":
-    #create_edges()
-    #compact_data, aml_genes_ids, non_aml_gene_ids, probe_gene_features, mapping = read_files()
-    #create_training_proc(compact_data, aml_genes_ids, non_aml_gene_ids, probe_gene_features, mapping)
-    compact_data, driver_ids, passenger_ids, gene_features, mapping = read_files()
-    create_training_proc(compact_data, driver_ids, passenger_ids, gene_features, mapping)
+    create_edges()
+    compact_data, aml_genes_ids, non_aml_gene_ids, probe_gene_features, mapping = read_files()
+    create_training_proc(compact_data, aml_genes_ids, non_aml_gene_ids, probe_gene_features, mapping)
+    #### Run reference code
+    #compact_data, driver_ids, passenger_ids, gene_features, mapping = read_files()
+    #create_training_proc(compact_data, driver_ids, passenger_ids, gene_features, mapping)
