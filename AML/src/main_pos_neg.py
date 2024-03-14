@@ -31,7 +31,7 @@ batch_size = 32
 num_classes = 2
 gene_dim = 34
 learning_rate = 0.001
-n_edges = 738000 #267186
+n_edges = 500 #738000 #267186
 
 
 class GCN(torch.nn.Module):
@@ -167,8 +167,8 @@ def read_files():
     print()
 
     # aml = 1, non-aml = 0
-    y[aml_probes_genes_ids[0].tolist()] = 1
-    y[non_aml_probes_genes_ids[0].tolist()] = 0
+    #y[aml_probes_genes_ids[0].tolist()] = 1
+    #y[non_aml_probes_genes_ids[0].tolist()] = 0
 
     #print("Saving mapping...")
     #save_mapping_json(mapping)
@@ -185,6 +185,7 @@ def read_files():
     links_relation_probes = links.replace({1: probe_gene_id_mapping})
 
     print(links_relation_probes)
+    sys.exit()
     
     # create data object
     x = torch.tensor(x.loc[:, 0:].to_numpy(), dtype=torch.float)
