@@ -37,6 +37,9 @@ def create_edges():
     print("Probe genes relations")
     gene_relation_path = "significant_gene_relation_large.tsv"
     relations_probe_ids = pd.read_csv(local_path + gene_relation_path, sep="\t", header=None)
+    relations_probe_ids = relations_probe_ids.sample(n=n_edges, random_state=1)
+    print(relations_probe_ids)
+    relations_probe_ids = relations_probe_ids[:n_edges]
     print(relations_probe_ids)
     feature_names = pd.read_csv(local_path + "df_feature_names.csv", sep="\t", header=None)
     feature_names.loc[:, 1] = feature_names.index
@@ -47,8 +50,9 @@ def create_edges():
     mapped_relations = relations_probe_ids.replace({1: probe_gene_id_mapping})
     print()
     print(mapped_relations)
-    mapped_relations.to_csv(local_path + "mapped_significant_gene_relations.csv", sep="\t", index=None)
-    return mapped_relations
+    mapped_relations.to_csv(local_path + "mapped_significant_gene_relations.tsv", sep="\t", index=None)
+    print("Edges created")
+    return probe_gene_id_mapping
 
 
 class GCN(torch.nn.Module):
@@ -93,15 +97,15 @@ def replace_name_by_ids(dataframe, col_index, mapper):
     dataframe.iloc[:, col_index] = ids
     return dataframe
 
-def read_files():
+def read_files(probe_gene_id_mapping):
     '''
     Read raw data files and create Pytorch dataset
     '''
-    #final_path = local_path
-    #print("Probe genes relations")
-    #gene_relation_path = "significant_gene_relation_large.tsv"
-    #relations_probe_ids = pd.read_csv(local_path + gene_relation_path, sep="\t", header=None)
-    #print(relations_probe_ids)
+    final_path = local_path
+    print("Probe genes relations")
+    gene_relation_path = "mapped_significant_gene_relations.tsv"
+    relations_probe_ids = pd.read_csv(local_path + gene_relation_path, sep="\t", header=None)
+    print(relations_probe_ids)
     print()
     print("NAIPU and DNAM features and labels")
     features_data_path = "df_nebit_dnam_features.csv"
@@ -112,7 +116,9 @@ def read_files():
     #feature_names = pd.read_csv(local_path + "df_feature_names.csv", sep="\t", header=None)
     feature_names = pd.read_csv(local_path + "df_feature_names.csv", sep="\t", header=None)
     print(feature_names)
-    #print(len(feature_names[0].tolist()))
+    feature_names.loc[:, 1] = feature_names.index
+    print(feature_names)
+    probe_gene_id_mapping = {index: i for i, index in enumerate(feature_names.loc[:, 0].unique())}
     print()
     print("Labels")
     labels = naipu_dnam_features.iloc[:, -1:]
@@ -122,10 +128,10 @@ def read_files():
     feature_no_labels = naipu_dnam_features.iloc[:, :-1]
     print(feature_no_labels)
     print()
-    print("Probe name and ids mapping")
-    probe_ids_mapping = pd.read_csv(local_path + "probe_genes_mapping_id.tsv", sep="\t")
-    print(probe_ids_mapping)
-    print()
+    #print("Probe name and ids mapping")
+    #probe_ids_mapping = pd.read_csv(local_path + "probe_genes_mapping_id.tsv", sep="\t")
+    #print(probe_gene_id_mapping)
+    #print()
     
     #print("Overall gene id mapping")
     #feature_names = feature_names[:10]
@@ -133,10 +139,13 @@ def read_files():
     #mapped_feature_names = replace_name_by_ids(feature_names, 0, probe_ids_mapping)
     #print(mapped_feature_names)
     #mapped_feature_names.to_csv(local_path + "mapped_feature_names.tsv", sep="\t", index=None)
-    
     print("Mapped feature names to ids")
-    mapped_feature_names = pd.read_csv(local_path + "mapped_feature_names.tsv", sep="\t")
+    mapped_feature_names = feature_names.loc[:, 1]
     print(mapped_feature_names)
+    #mapped_feature_names.replace({0: probe_gene_id_mapping})
+    
+    #mapped_feature_names = pd.read_csv(local_path + "mapped_feature_names.tsv", sep="\t")
+    #print(mapped_feature_names)
     
     # replace gene names with ids, only the first two columns
     #relations_probe_ids = relations_probe_ids[:n_edges]
@@ -149,7 +158,8 @@ def read_files():
     #links_relation_probes.to_csv(local_path + "links_relation_probes.tsv", sep="\t", index=None)
     
     print("Mapped links")
-    links_relation_probes = pd.read_csv(local_path + "links_relation_probes.tsv", sep="\t")
+    links_relation_probes = relations_probe_ids[:n_edges]
+    #links_relation_probes = pd.read_csv(local_path + "links_relation_probes.tsv", sep="\t")
     print(links_relation_probes)
     print()
     print("Creating X and Y")
@@ -170,10 +180,10 @@ def read_files():
     # set up true labels
     compact_data.y = y
 
-    return compact_data, probe_ids_mapping, feature_names, mapped_feature_names
+    return compact_data, feature_names, mapped_feature_names
 
 
-def create_training_proc(compact_data, probe_gene_id_mapping, feature_n, mapped_f_name):
+def create_training_proc(compact_data, feature_n, mapped_f_name):
     '''
     Create network architecture and assign loss, optimizers ...
     '''
@@ -417,6 +427,6 @@ def plot_loss_acc(n_epo, tr_loss, te_acc):
 
 
 if __name__ == "__main__":
-    create_edges()
-    #compact_data, mapping, feature_n, mapped_f_name = read_files()
-    #create_training_proc(compact_data, mapping, feature_n, mapped_f_name)
+    id_mapping = create_edges()
+    compact_data, feature_n, mapped_f_name = read_files(id_mapping)
+    create_training_proc(compact_data, feature_n, mapped_f_name)
