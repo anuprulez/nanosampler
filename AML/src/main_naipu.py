@@ -97,7 +97,7 @@ def replace_name_by_ids(dataframe, col_index, mapper):
     dataframe.iloc[:, col_index] = ids
     return dataframe
 
-def read_files(probe_gene_id_mapping):
+def read_files():
     '''
     Read raw data files and create Pytorch dataset
     '''
@@ -118,7 +118,7 @@ def read_files(probe_gene_id_mapping):
     print(feature_names)
     feature_names.loc[:, 1] = feature_names.index
     print(feature_names)
-    probe_gene_id_mapping = {index: i for i, index in enumerate(feature_names.loc[:, 0].unique())}
+    #probe_gene_id_mapping = {index: i for i, index in enumerate(feature_names.loc[:, 0].unique())}
     print()
     print("Labels")
     labels = naipu_dnam_features.iloc[:, -1:]
@@ -167,6 +167,7 @@ def read_files(probe_gene_id_mapping):
     y = torch.zeros(x.shape[0], dtype=torch.long)
     y = labels.iloc[:, 0]
     y = y - 1 #shift labels from 1...5 to 0..4
+    y = torch.tensor(y.to_numpy(), dtype=torch.long)
     print(y)
 
     # create data object
@@ -176,9 +177,9 @@ def read_files(probe_gene_id_mapping):
     compact_data = Data(x=x, edge_index=edge_index.t().contiguous())
     # set up true labels
     compact_data.y = y
-    compact_data = Data(x=x, edge_index=edge_index.t().contiguous())
+    #compact_data = Data(x=x, edge_index=edge_index.t().contiguous())
     # set up true labels
-    compact_data.y = y
+    #compact_data.y = y
 
     return compact_data, feature_names, mapped_feature_names
 
@@ -215,11 +216,11 @@ def create_training_proc(compact_data, feature_n, mapped_f_name):
     aml_auprc_epo = list()
     #mapped_f_name = mapped_f_name[:20]
     rand_index = [item for item in range(len(mapped_f_name.index))]
-    print(mapped_f_name)
-    lst_mapped_f_name = np.array(mapped_f_name.iloc[:, 0].tolist())
-    print(lst_mapped_f_name)
-    print("Random index")
-    print(rand_index)
+    #print(mapped_f_name)
+    lst_mapped_f_name = np.array(mapped_f_name.index) #np.array(mapped_f_name.iloc[:, 0].tolist())
+    #print(lst_mapped_f_name)
+    #print("Random index")
+    #print(rand_index)
     # loop over epochs
     for epoch in range(n_epo):
         tr_loss_fold = list()
@@ -251,6 +252,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name):
                 batch_tr_index = train_test_index[bat * batch_size: (bat+1) * batch_size]
                 print(bat, batch_tr_index)
                 tr_node_ids = lst_mapped_f_name[batch_tr_index]
+                print("tr_node_ids", tr_node_ids)
                 compact_data.train_mask = create_masks(mapped_f_name, tr_node_ids)
                 tr_loss, h = train(compact_data, optimizer, model, criterion)
                 batch_tr_loss.append(tr_loss.detach().numpy())
@@ -287,11 +289,29 @@ def create_training_proc(compact_data, feature_n, mapped_f_name):
 
 def create_masks(mapped_node_ids, mask_list):
     print("In mask")
-    print(mapped_node_ids)
-    print(mask_list)
-    mask = mapped_node_ids.iloc[:, 0].isin(mask_list)
+    #print(mapped_node_ids)
+    #print(mask_list)
+    mask = mapped_node_ids.index.isin(mask_list) #mapped_node_ids.iloc[:, 0].isin(mask_list)
     print(mask)
     return torch.tensor(mask, dtype=torch.bool)
+
+
+def train(data, optimizer, model, criterion):
+    '''
+    Training step
+    '''
+    # Clear gradients
+    optimizer.zero_grad()
+    # forward pass
+    out, h = model(data.x, data.edge_index)
+    # compute error using training mask
+    loss = criterion(out[data.train_mask], data.y[data.train_mask])
+    # compute gradients
+    loss.backward()
+    # optimize weights
+    optimizer.step()
+    return loss, h
+
 
 
 def predict_data(model, compact_data):
@@ -366,21 +386,6 @@ def get_top_genes(model, compact_data, test_driver_genes, top_genes=10):
     print("Find these ids in the gene_mapping.json file")
     
 
-def train(data, optimizer, model, criterion):
-    '''
-    Training step
-    '''
-    # Clear gradients
-    optimizer.zero_grad()
-    # forward pass
-    out, h = model(data.x, data.edge_index)
-    # compute error using training mask
-    loss = criterion(out[data.train_mask], data.y[data.train_mask])
-    # compute gradients
-    loss.backward()
-    # optimize weights
-    optimizer.step()
-    return loss, h
 
 
 ########################
@@ -427,6 +432,6 @@ def plot_loss_acc(n_epo, tr_loss, te_acc):
 
 
 if __name__ == "__main__":
-    id_mapping = create_edges()
-    compact_data, feature_n, mapped_f_name = read_files(id_mapping)
+    #id_mapping = create_edges()
+    compact_data, feature_n, mapped_f_name = read_files()
     create_training_proc(compact_data, feature_n, mapped_f_name)
