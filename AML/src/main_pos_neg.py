@@ -12,7 +12,7 @@ from torch.nn import Linear
 from torch_geometric.nn import GCNConv
 
 import sklearn
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay, roc_curve, roc_auc_score, RocCurveDisplay, average_precision_score
 
 
