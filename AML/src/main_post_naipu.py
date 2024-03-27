@@ -29,13 +29,13 @@ plot_local_path = "../plots/"
 
 # neural network parameters
 SEED = 32
-n_epo = 1
+n_epo = 2
 k_folds = 5
-batch_size = 32
+batch_size = 256
 num_classes = 5
 gene_dim = 39
 learning_rate = 0.001
-n_edges = 1000
+n_edges = 1000000
 
 def create_edges():
     print("Probe genes relations")
@@ -120,7 +120,8 @@ def read_files(ppi):
     print()
     print("Mapped feature names to ids")
     mapped_feature_names = out_genes.loc[:, 0]
-    print(mapped_feature_names)    
+    print(mapped_feature_names)
+    print()
     print("Mapped links before sampling")
     #links_relation_probes = relations_probe_ids[:n_edges]
     print(relations_probe_ids[:n_edges])
@@ -130,7 +131,7 @@ def read_files(ppi):
     print()
     print("Creating X and Y")
     x = feature_no_labels.iloc[:, 0:]
-    y = torch.zeros(x.shape[0], dtype=torch.long)
+    #y = torch.zeros(x.shape[0], dtype=torch.long)
     y = labels.iloc[:, 0]
     #shift labels from 1...5 to 0..4
     y = y - 1
@@ -142,13 +143,10 @@ def read_files(ppi):
     compact_data = Data(x=x, edge_index=edge_index.t().contiguous())
     # set up true labels
     compact_data.y = y
-
-    sys.exit()
-
-    return compact_data, feature_names, mapped_feature_names
+    return compact_data, feature_names, mapped_feature_names, out_genes
 
 
-def create_training_proc(compact_data, feature_n, mapped_f_name):
+def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes):
     '''
     Create network architecture and assign loss, optimizers ...
     '''
@@ -203,7 +201,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name):
             val_acc_fold.append(val_acc)
 
         print("-------------------")
-        te_acc, _, _ = predict_data_test(model, compact_data)
+        te_acc, _, _, _ = predict_data_test(model, compact_data)
         te_acc_epo.append(te_acc)
         tr_loss_epo.append(np.mean(tr_loss_fold))
         val_acc_epo.append(np.mean(val_acc_fold))
@@ -216,10 +214,57 @@ def create_training_proc(compact_data, feature_n, mapped_f_name):
     plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo)
     print("CV Training Loss after {} epochs: {}".format(str(n_epo), str(np.mean(tr_loss_epo))))
     print("CV Val acc after {} epochs: {}".format(str(n_epo), str(np.mean(val_acc_epo))))
-    final_test_acc, pred_labels, true_labels = predict_data_test(model, compact_data)
+    final_test_acc, pred_labels, true_labels, all_pred = predict_data_test(model, compact_data)
     print("CV Test acc after {} epochs: {}".format(n_epo, final_test_acc))
     plot_confusion_matrix(true_labels, pred_labels, n_edges, n_epo)
+    analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, n_edges, n_epo)
     print("==============")
+
+
+def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, n_edges, n_epo):
+    ground_truth_pos_genes = out_genes[out_genes.iloc[:, 2] > 0]
+    ground_truth_pos_gene_ids = ground_truth_pos_genes.iloc[:, 0].tolist()
+    test_index = [index for index, item in enumerate(compact_data.test_mask) if item == True]
+    print()
+    masked_pos_genes_ids = list(set(ground_truth_pos_gene_ids).intersection(set(test_index)))
+    print(len(ground_truth_pos_gene_ids), len(test_index), len(masked_pos_genes_ids))
+    model.eval()
+    out = model(compact_data.x, compact_data.edge_index)
+    all_pred = out[0].argmax(dim=1)
+    masked_p_pos_labels = all_pred[masked_pos_genes_ids]
+    df_p_labels = pd.DataFrame(masked_p_pos_labels, columns=["pred_labels"])
+    # plot histogram
+    plt.figure(figsize=(8, 6))
+    g = sns.histplot(data=df_p_labels, x="pred_labels")
+    plt.xlabel('Predicted classes')
+    plt.ylabel('Count')
+    plt.title('Masked positive genes predicted into different classes.')
+    plt.xticks(rotation=45)
+    plt.yticks(rotation=0)
+    # set the ticks first 
+    g.set_xticks(range(5))
+    # set the labels 
+    g.set_xticklabels(['0', '1', '2', '3', '4']) 
+    # Show plot
+    plt.tight_layout()
+    plt.grid(True)
+    plt.savefig(plot_local_path + "Histogram_positive__NPPI_{}_NEpochs_{}.pdf".format(n_edges, n_epo), dpi=200)
+
+    plt.figure(figsize=(8, 6))
+    g = sns.kdeplot(data=df_p_labels, x="pred_labels")
+    plt.xlabel('Predicted classes')
+    plt.ylabel('Density')
+    plt.title('Masked positive genes predicted into different classes.')
+    plt.xticks(rotation=45)
+    plt.yticks(rotation=0)
+    # set the ticks first 
+    g.set_xticks(range(5))
+    # set the labels 
+    g.set_xticklabels(['0', '1', '2', '3', '4']) 
+    # Show plot
+    plt.tight_layout()
+    plt.grid(True)
+    plt.savefig(plot_local_path + "KDE_positive__NPPI_{}_NEpochs_{}.pdf".format(n_edges, n_epo), dpi=200)
 
 
 def create_masks(mapped_node_ids, mask_list):
@@ -292,7 +337,7 @@ def predict_data_test(model, compact_data):
     true_labels = compact_data.y[compact_data.test_mask]
     test_correct = pred_labels == true_labels
     test_acc = int(test_correct.sum()) / float(int(compact_data.test_mask.sum()))
-    return test_acc, pred_labels.numpy(), true_labels.numpy()
+    return test_acc, pred_labels.numpy(), true_labels.numpy(), pred
     
 
 ########################
@@ -325,5 +370,5 @@ def plot_loss_acc(n_epo, tr_loss, val_acc, te_acc):
 
 if __name__ == "__main__":
     ppi = create_edges()
-    compact_data, feature_n, mapped_f_name = read_files(ppi)
-    create_training_proc(compact_data, feature_n, mapped_f_name)
+    compact_data, feature_n, mapped_f_name, out_genes = read_files(ppi)
+    create_training_proc(compact_data, feature_n, mapped_f_name, out_genes)
