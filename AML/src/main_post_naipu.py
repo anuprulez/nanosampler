@@ -29,13 +29,13 @@ plot_local_path = "../plots/"
 
 # neural network parameters
 SEED = 32
-n_epo = 2
-k_folds = 5
-batch_size = 256
+n_epo = 1
+k_folds = 2
+batch_size = 128 #256
 num_classes = 5
 gene_dim = 39
 learning_rate = 0.001
-n_edges = 1000000
+n_edges = 1000 #1500000
 
 def create_edges():
     print("Probe genes relations")
@@ -218,7 +218,36 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes):
     print("CV Test acc after {} epochs: {}".format(n_epo, final_test_acc))
     plot_confusion_matrix(true_labels, pred_labels, n_edges, n_epo)
     analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, n_edges, n_epo)
+
+    ## GNN Explainer
+    gnn_explainer(model, compact_data)
+    
     print("==============")
+
+
+def gnn_explainer(model, data):
+    
+    from torch_geometric.data import Data
+    from torch_geometric.explain import GNNExplainer
+    import py_explainer
+
+    explainer = py_explainer.Explainer(
+        model=model,
+        algorithm=GNNExplainer(epochs=1),
+        explanation_type='model',
+        node_mask_type='attributes',
+        edge_mask_type='object',
+        model_config=dict(
+            mode='multiclass_classification',
+            task_level='node',
+            return_type='log_probs',  # Model returns log probabilities.
+        ),
+    )
+
+    # Generate explanation for the node at index `10`:
+    explanation = explainer(data.x, data.edge_index, index=0)
+    print(explanation.edge_mask)
+    print(explanation.node_mask)
 
 
 def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, n_edges, n_epo):
