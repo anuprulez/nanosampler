@@ -30,12 +30,13 @@ plot_local_path = "../plots/"
 # neural network parameters
 SEED = 32
 n_epo = 1
-k_folds = 2
-batch_size = 128 #256
+k_folds = 5
+batch_size = 32 #256
 num_classes = 5
 gene_dim = 39
+hidden_dim = 32
 learning_rate = 0.001
-n_edges = 1000 #1500000
+n_edges = 100000 #1500000
 
 def create_edges():
     print("Probe genes relations")
@@ -53,27 +54,27 @@ class GCN(torch.nn.Module):
     def __init__(self):
         super().__init__()
         torch.manual_seed(SEED)
-        self.conv1 = GCNConv(gene_dim, 64)
-        self.conv2 = GCNConv(64, 128)
-        self.conv3 = GCNConv(128, 64)
-        self.conv4 = GCNConv(64, 32)
-        self.classifier = Linear(32, num_classes)
-        self.batch_norm1 = BatchNorm1d(64)
-        self.batch_norm2 = BatchNorm1d(128)
-        self.batch_norm3 = BatchNorm1d(64)
-        self.batch_norm4 = BatchNorm1d(32)
+        self.conv1 = GCNConv(gene_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, 2 * hidden_dim)
+        self.conv3 = GCNConv(2 * hidden_dim, hidden_dim)
+        self.conv4 = GCNConv(hidden_dim, hidden_dim // 2)
+        self.classifier = Linear(hidden_dim // 2, num_classes)
+        self.batch_norm1 = BatchNorm1d(hidden_dim)
+        self.batch_norm2 = BatchNorm1d(2 * hidden_dim)
+        self.batch_norm3 = BatchNorm1d(hidden_dim)
+        self.batch_norm4 = BatchNorm1d(hidden_dim // 2)
 
     def forward(self, x, edge_index):
         h = self.conv1(x, edge_index)
         h = self.batch_norm1(F.relu(h))
-        h = self.conv2(h, edge_index)
-        h = self.batch_norm2(F.relu(h))
-        h = self.conv3(h, edge_index)
-        h = self.batch_norm3(F.relu(h))
+        #h = self.conv2(h, edge_index)
+        #h = self.batch_norm2(F.relu(h))
+        #h = self.conv3(h, edge_index)
+        #h = self.batch_norm3(F.relu(h))
         h = self.conv4(h, edge_index)
         h = self.batch_norm4(F.relu(h))
         out = self.classifier(h)
-        return out, h
+        return out
 
 def load_node_csv(path, index_col, encoders=None, **kwargs):
     df = pd.read_csv(path, index_col=index_col, header=None)
@@ -131,9 +132,8 @@ def read_files(ppi):
     print()
     print("Creating X and Y")
     x = feature_no_labels.iloc[:, 0:]
-    #y = torch.zeros(x.shape[0], dtype=torch.long)
     y = labels.iloc[:, 0]
-    #shift labels from 1...5 to 0..4
+    # shift labels from 1...5 to 0..4
     y = y - 1
     y = torch.tensor(y.to_numpy(), dtype=torch.long)
     # create data object
@@ -191,7 +191,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes):
             for bat in range(n_batches):
                 batch_tr_node_ids = train_nodes_ids[bat * batch_size: (bat+1) * batch_size]
                 compact_data.batch_train_mask = create_masks(mapped_f_name, batch_tr_node_ids)
-                tr_loss, h = train(compact_data, optimizer, model, criterion)
+                tr_loss = train(compact_data, optimizer, model, criterion)
                 batch_tr_loss.append(tr_loss.detach().numpy())
             tr_loss_fold.append(np.mean(batch_tr_loss))
             # predict using trained model
@@ -226,28 +226,36 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes):
 
 
 def gnn_explainer(model, data):
-    
+    from torch_geometric.explain import Explainer, GNNExplainer, GraphMaskExplainer
     from torch_geometric.data import Data
-    from torch_geometric.explain import GNNExplainer
-    import py_explainer
 
-    explainer = py_explainer.Explainer(
+    print("Running GNN explanation...")
+    explainer = Explainer(
         model=model,
-        algorithm=GNNExplainer(epochs=1),
+        algorithm=GNNExplainer(epochs=200),
         explanation_type='model',
         node_mask_type='attributes',
         edge_mask_type='object',
         model_config=dict(
             mode='multiclass_classification',
             task_level='node',
-            return_type='log_probs',  # Model returns log probabilities.
+            return_type='log_probs',
         ),
     )
+    node_index = 596
+    explanation = explainer(data.x, data.edge_index, index=node_index)
+    plt.figure(figsize=(8, 6))
+    print(f'Generated explanations in {explanation.available_explanations}')
+    path = plot_local_path + 'feature_importance.png'
+    explanation.visualize_feature_importance(path, top_k=10)
+    print(f"Feature importance plot has been saved to '{path}'")
+    plt.figure(figsize=(8, 6))
+    path = plot_local_path + 'subgraph.pdf'
+    explanation.visualize_graph(path)
+    print(f"Subgraph visualization plot has been saved to '{path}'")
 
-    # Generate explanation for the node at index `10`:
-    explanation = explainer(data.x, data.edge_index, index=0)
-    print(explanation.edge_mask)
-    print(explanation.node_mask)
+    print(explanation.edge_mask, explanation.edge_mask.shape)
+    print(explanation.node_mask, explanation.node_mask.shape)
 
 
 def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, n_edges, n_epo):
@@ -259,7 +267,7 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, n_edges, 
     print(len(ground_truth_pos_gene_ids), len(test_index), len(masked_pos_genes_ids))
     model.eval()
     out = model(compact_data.x, compact_data.edge_index)
-    all_pred = out[0].argmax(dim=1)
+    all_pred = out.argmax(dim=1)
     masked_p_pos_labels = all_pred[masked_pos_genes_ids]
     df_p_labels = pd.DataFrame(masked_p_pos_labels, columns=["pred_labels"])
     # plot histogram
@@ -308,14 +316,14 @@ def train(data, optimizer, model, criterion):
     # Clear gradients
     optimizer.zero_grad()
     # forward pass
-    out, h = model(data.x, data.edge_index)
+    out = model(data.x, data.edge_index)
     # compute error using training mask
     loss = criterion(out[data.batch_train_mask], data.y[data.batch_train_mask])
     # compute gradients
     loss.backward()
     # optimize weights
     optimizer.step()
-    return loss, h
+    return loss
 
 
 def plot_confusion_matrix(true_labels, predicted_labels, edges, epo, classes=[0, 1, 2, 3, 4]):
@@ -348,7 +356,7 @@ def predict_data_val(model, compact_data):
     # predict on test fold
     model.eval()
     out = model(compact_data.x, compact_data.edge_index)
-    pred = out[0].argmax(dim=1)
+    pred = out.argmax(dim=1)
     val_correct = pred[compact_data.val_mask] == compact_data.y[compact_data.val_mask]
     val_acc = int(val_correct.sum()) / float(int(compact_data.val_mask.sum()))
     return val_acc
@@ -361,7 +369,7 @@ def predict_data_test(model, compact_data):
     # predict on test fold
     model.eval()
     out = model(compact_data.x, compact_data.edge_index)
-    pred = out[0].argmax(dim=1)
+    pred = out.argmax(dim=1)
     pred_labels = pred[compact_data.test_mask]
     true_labels = compact_data.y[compact_data.test_mask]
     test_correct = pred_labels == true_labels
