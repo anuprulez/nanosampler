@@ -1,5 +1,4 @@
 import torch
-#from torch_geometric.data import Data
 from torch.nn import Linear, BatchNorm1d, ReLU
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
@@ -8,8 +7,6 @@ import numpy as np
 
 import sklearn
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
-#from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay, roc_curve, roc_auc_score, RocCurveDisplay, average_precision_score, confusion_matrix
-
 
 import gnn_network
 import plot_gnn
