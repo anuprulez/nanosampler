@@ -8,19 +8,16 @@ import pandas as pd
 import numpy as np
 
 
-# neural network parameters
-SEED = 32
-num_classes = 5
-gene_dim = 39
-hidden_dim = 32
-
-
 class GCN(torch.nn.Module):
     '''
     Neural network with graph convolution network (GCN)
     '''
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
+        num_classes = config["num_classes"]
+        gene_dim = config["gene_dim"]
+        hidden_dim = config["hidden_dim"]
+        SEED = config["SEED"]
         torch.manual_seed(SEED)
         self.conv1 = GCNConv(gene_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, 2 * hidden_dim)

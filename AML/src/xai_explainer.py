@@ -1,5 +1,6 @@
 from torch_geometric.explain import Explainer, GNNExplainer, GraphMaskExplainer
 from torch_geometric.data import Data
+import matplotlib.pyplot as plt
 
 
 def gnn_explainer(model, data, config):
@@ -28,6 +29,5 @@ def gnn_explainer(model, data, config):
     path = plot_local_path + 'subgraph.pdf'
     explanation.visualize_graph(path)
     print(f"Subgraph visualization plot has been saved to '{path}'")
-
     print(explanation.edge_mask, explanation.edge_mask.shape)
     print(explanation.node_mask, explanation.node_mask.shape)

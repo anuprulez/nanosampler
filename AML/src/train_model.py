@@ -65,6 +65,23 @@ def predict_data_test(model, compact_data):
     return test_acc, pred_labels.numpy(), true_labels.numpy(), pred
 
 
+def save_model(model, config):
+    model_local_path = config["model_local_path"]
+    model_path = "{}/trained_model_edges_{}_epo_{}.ptm".format(model_local_path, config["n_edges"], config["n_epo"])
+    torch.save(model.state_dict(), model_path)
+    return model_path
+
+
+def load_model(config, model_path):
+    model = gnn_network.GCN(config)
+    print(model)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.load_state_dict(
+        torch.load(model_path, map_location=device)
+    )
+    return model
+
+
 def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, config):
     '''
     Create network architecture and assign loss, optimizers ...
@@ -80,7 +97,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     print("Compact data")
     print(compact_data)
     print("Initialize model")
-    model = gnn_network.GCN()
+    model = gnn_network.GCN(config)
     print(model)
     criterion = torch.nn.CrossEntropyLoss()
     # optimizer
@@ -135,14 +152,18 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
         print("Epoch {}: Val accuracy: {}".format(str(epoch+1), str(np.mean(val_acc_epo))))
         print("Epoch {}: Test accuracy: {}".format(str(epoch+1), str(np.mean(te_acc))))
         print()
+    saved_model_path = save_model(model, config)
     print("==============")
     plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo, config)
     print("CV Training Loss after {} epochs: {}".format(str(n_epo), str(np.mean(tr_loss_epo))))
     print("CV Val acc after {} epochs: {}".format(str(n_epo), str(np.mean(val_acc_epo))))
-    final_test_acc, pred_labels, true_labels, all_pred = predict_data_test(model, compact_data)
+    loaded_model = load_model(config, saved_model_path)
+    final_test_acc, pred_labels, true_labels, all_pred = predict_data_test(loaded_model, compact_data)
     print("CV Test acc after {} epochs: {}".format(n_epo, final_test_acc))
     print("==============")
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
-    plot_gnn.analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config)
+    plot_gnn.analyse_ground_truth_pos(loaded_model, compact_data, out_genes, all_pred, config)
+
+    
 
     return model, compact_data
