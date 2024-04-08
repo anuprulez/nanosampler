@@ -18,25 +18,23 @@ import sklearn
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
 from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay, roc_curve, roc_auc_score, RocCurveDisplay, average_precision_score, confusion_matrix
 
+import gnn_network
 
-# matplotlib settings
-#font = {'family': 'serif', 'size': 20}
-#plt.rc('font', **font)
 
 # data path
 data_local_path = "../naipu_processed_data/"
 plot_local_path = "../plots/"
 
 # neural network parameters
-SEED = 32
 n_epo = 1
 k_folds = 5
-batch_size = 32 #256
+batch_size = 32
 num_classes = 5
 gene_dim = 39
-hidden_dim = 32
+n_edges = 1000 #1500000
 learning_rate = 0.001
-n_edges = 100000 #1500000
+
+
 
 def create_edges():
     print("Probe genes relations")
@@ -46,45 +44,17 @@ def create_edges():
     return relations_probe_ids
     print("Edges created")
 
-
-class GCN(torch.nn.Module):
-    '''
-    Neural network with graph convolution network (GCN)
-    '''
-    def __init__(self):
-        super().__init__()
-        torch.manual_seed(SEED)
-        self.conv1 = GCNConv(gene_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, 2 * hidden_dim)
-        self.conv3 = GCNConv(2 * hidden_dim, hidden_dim)
-        self.conv4 = GCNConv(hidden_dim, hidden_dim // 2)
-        self.classifier = Linear(hidden_dim // 2, num_classes)
-        self.batch_norm1 = BatchNorm1d(hidden_dim)
-        self.batch_norm2 = BatchNorm1d(2 * hidden_dim)
-        self.batch_norm3 = BatchNorm1d(hidden_dim)
-        self.batch_norm4 = BatchNorm1d(hidden_dim // 2)
-
-    def forward(self, x, edge_index):
-        h = self.conv1(x, edge_index)
-        h = self.batch_norm1(F.relu(h))
-        #h = self.conv2(h, edge_index)
-        #h = self.batch_norm2(F.relu(h))
-        #h = self.conv3(h, edge_index)
-        #h = self.batch_norm3(F.relu(h))
-        h = self.conv4(h, edge_index)
-        h = self.batch_norm4(F.relu(h))
-        out = self.classifier(h)
-        return out
-
 def load_node_csv(path, index_col, encoders=None, **kwargs):
     df = pd.read_csv(path, index_col=index_col, header=None)
     mapping = {index: i for i, index in enumerate(df.index.unique())}
     x = df.iloc[:, 0:]
     return x, mapping
 
+
 def save_mapping_json(lp, mapping_file):
     with open(lp, 'gene_mapping.json', 'w') as outfile:
         outfile.write(json.dumps(mapping_file))
+
 
 def replace_name_by_ids(dataframe, col_index, mapper):
     names = dataframe.iloc[:, col_index]
@@ -92,6 +62,7 @@ def replace_name_by_ids(dataframe, col_index, mapper):
     ids = [mapper[mapper["name"] == name]["id"].values[0] for name in lst_names]
     dataframe.iloc[:, col_index] = ids
     return dataframe
+
 
 def read_files(ppi):
     '''
@@ -155,7 +126,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes):
     print("Compact data")
     print(compact_data)
     print("Initialize model")
-    model = GCN()
+    model = gnn_network.GCN()
     print(model)
     criterion = torch.nn.CrossEntropyLoss()
     # optimizer
@@ -219,8 +190,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes):
     plot_confusion_matrix(true_labels, pred_labels, n_edges, n_epo)
     analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, n_edges, n_epo)
 
-    ## GNN Explainer
-    gnn_explainer(model, compact_data)
+    return model, compact_data
     
     print("==============")
 
@@ -408,4 +378,5 @@ def plot_loss_acc(n_epo, tr_loss, val_acc, te_acc):
 if __name__ == "__main__":
     ppi = create_edges()
     compact_data, feature_n, mapped_f_name, out_genes = read_files(ppi)
-    create_training_proc(compact_data, feature_n, mapped_f_name, out_genes)
+    trained_model, data = create_training_proc(compact_data, feature_n, mapped_f_name, out_genes)
+    #gnn_explainer(trained_model, data)
