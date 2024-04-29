@@ -53,13 +53,14 @@ def predict_data_test(model, compact_data):
     '''
     # predict on test fold
     model.eval()
+    model = model.cuda()
     out = model(compact_data.x, compact_data.edge_index)
     pred = out.argmax(dim=1)
     pred_labels = pred[compact_data.test_mask]
     true_labels = compact_data.y[compact_data.test_mask]
     test_correct = pred_labels == true_labels
     test_acc = int(test_correct.sum()) / float(int(compact_data.test_mask.sum()))
-    return test_acc, pred_labels.numpy(), true_labels.numpy(), pred
+    return test_acc, pred_labels.cpu().detach().numpy(), true_labels.cpu().detach().numpy(), pred
 
 
 def save_model(model, config):
@@ -95,6 +96,9 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     print(compact_data)
     print("Initialize model")
     model = gnn_network.GCN(config)
+    print(torch.cuda.is_available())
+    model = model.cuda()
+    compact_data = compact_data.cuda()
     print(model)
     criterion = torch.nn.CrossEntropyLoss()
     # optimizer
@@ -131,7 +135,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
                 batch_tr_node_ids = train_nodes_ids[bat * batch_size: (bat+1) * batch_size]
                 compact_data.batch_train_mask = create_masks(mapped_f_name, batch_tr_node_ids)
                 tr_loss = train(compact_data, optimizer, model, criterion)
-                batch_tr_loss.append(tr_loss.detach().numpy())
+                batch_tr_loss.append(tr_loss.cpu().detach().numpy())
             tr_loss_fold.append(np.mean(batch_tr_loss))
             # predict using trained model
             val_acc = predict_data_val(model, compact_data)

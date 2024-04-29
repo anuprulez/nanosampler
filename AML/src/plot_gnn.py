@@ -75,6 +75,7 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
     out = model(compact_data.x, compact_data.edge_index)
     all_pred = out.argmax(dim=1)
     masked_p_pos_labels = all_pred[masked_pos_genes_ids]
+    masked_p_pos_labels = masked_p_pos_labels.cpu().detach()
     df_p_labels = pd.DataFrame(masked_p_pos_labels, columns=["pred_labels"])
     # plot histogram
     plt.figure(figsize=(8, 6))
