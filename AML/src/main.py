@@ -6,16 +6,19 @@ import xai_explainer
 config = {
     "SEED": 32,
     "n_edges": 1500000,
-    "n_epo": 1,
+    "n_epo": 10,
     "k_folds": 5,
-    "batch_size": 1024,
+    "batch_size": 128,
     "num_classes": 5,
     "gene_dim": 39,
-    "hidden_dim": 32,
-    "learning_rate": 0.001,
-    "plot_local_path": "../plots/",
-    "data_local_path": "../naipu_processed_data/",
-    "model_local_path": "../models"
+    "hidden_dim": 128,
+    "learning_rate": 0.0001,
+    "out_links": "out_links_only_positive_corr", # "out_links_10000_20_03"
+    "out_genes": "out_genes_only_positive_corr", # "out_genes_10000_20_03"
+    "nedbit_dnam_features": "df_nebit_dnam_features.csv", # "df_nebit_dnam_features.csv"
+    "plot_local_path": "../plots/only_positive_corr_data/",
+    "data_local_path": "../naipu_processed_data/only_positive_corr_data/",
+    "model_local_path": "../models/only_positive_corr_data/"
 }
 
 

@@ -1,6 +1,5 @@
 import torch
 from torch.nn import Linear, BatchNorm1d, ReLU
-from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 
 import numpy as np
@@ -18,9 +17,6 @@ def create_masks(mapped_node_ids, mask_list):
 
 
 def train(data, optimizer, model, criterion):
-    '''
-    Training step
-    '''
     # Clear gradients
     optimizer.zero_grad()
     # forward pass
@@ -48,10 +44,6 @@ def predict_data_val(model, compact_data):
 
 
 def predict_data_test(model, compact_data):
-    '''
-    Predict using trained model and test data
-    '''
-    # predict on test fold
     model.eval()
     model = model.cuda()
     out = model(compact_data.x, compact_data.edge_index)
@@ -63,6 +55,28 @@ def predict_data_test(model, compact_data):
     return test_acc, pred_labels.cpu().detach().numpy(), true_labels.cpu().detach().numpy(), pred
 
 
+def extract_node_embeddings(model, compact_data, model_activation, config):
+    data_local_path = config["data_local_path"]
+    conv_name = "pnaconv4"
+    bn4_activation = model_activation['batch_norm4']
+    conv4_activation = model_activation[conv_name]
+    pred_embeddings_conv4 = conv4_activation[compact_data.test_mask]
+    pred_embeddings_batch_norm4 = bn4_activation[compact_data.test_mask]
+    true_labels = compact_data.y[compact_data.test_mask]
+    pred_embeddings_conv4 = pred_embeddings_conv4.cpu().detach().numpy()
+    pred_embeddings_batch_norm4 = pred_embeddings_batch_norm4.cpu().detach().numpy()
+    true_labels = true_labels.cpu().detach().numpy()
+
+    torch.save(pred_embeddings_conv4, data_local_path + 'embed_conv.pt')
+    torch.save(pred_embeddings_batch_norm4, data_local_path + 'embed_batch_norm.pt')
+    torch.save(true_labels, data_local_path + 'true_labels.pt')
+    print(bn4_activation.shape, conv4_activation.shape, pred_embeddings_batch_norm4.shape)
+    
+    plot_gnn.plot_node_embed(pred_embeddings_conv4, true_labels, config, conv_name)
+    plot_gnn.plot_node_embed(pred_embeddings_batch_norm4, true_labels, config, "batch_norm4")
+    print("----------------")
+
+
 def save_model(model, config):
     model_local_path = config["model_local_path"]
     model_path = "{}/trained_model_edges_{}_epo_{}.ptm".format(model_local_path, config["n_edges"], config["n_epo"])
@@ -70,8 +84,9 @@ def save_model(model, config):
     return model_path
 
 
-def load_model(config, model_path):
-    model = gnn_network.GCN(config)
+def load_model(config, model_path, compact_data):
+    #model = gnn_network.GCN(config)
+    model = gnn_network.GPNA(config, compact_data)
     print(model)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.load_state_dict(
@@ -95,9 +110,20 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     print("Compact data")
     print(compact_data)
     print("Initialize model")
-    model = gnn_network.GCN(config)
+    #model = gnn_network.GCN(config)
+    model = gnn_network.GPNA(config, compact_data)
     print(torch.cuda.is_available())
     model = model.cuda()
+
+    model_activation = {}
+    def get_activation(name):
+        def hook(model, input, output):
+            model_activation[name] = output.detach()
+        return hook
+
+    model.pnaconv4.register_forward_hook(get_activation('pnaconv4'))
+    model.batch_norm4.register_forward_hook(get_activation('batch_norm4'))
+    
     compact_data = compact_data.cuda()
     print(model)
     criterion = torch.nn.CrossEntropyLoss()
@@ -158,10 +184,11 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo, config)
     print("CV Training Loss after {} epochs: {}".format(str(n_epo), str(np.mean(tr_loss_epo))))
     print("CV Val acc after {} epochs: {}".format(str(n_epo), str(np.mean(val_acc_epo))))
-    loaded_model = load_model(config, saved_model_path)
+    loaded_model = model #load_model(config, saved_model_path, compact_data)
     final_test_acc, pred_labels, true_labels, all_pred = predict_data_test(loaded_model, compact_data)
     print("CV Test acc after {} epochs: {}".format(n_epo, final_test_acc))
     print("==============")
+    extract_node_embeddings(model, compact_data, model_activation, config)
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
     plot_gnn.analyse_ground_truth_pos(loaded_model, compact_data, out_genes, all_pred, config)
 

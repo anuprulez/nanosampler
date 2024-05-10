@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
+import umap
 from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay, roc_curve, roc_auc_score, \
 RocCurveDisplay, average_precision_score, confusion_matrix
 
@@ -36,7 +37,7 @@ def plot_loss_acc(n_epo, tr_loss, val_acc, te_acc, config):
     plt.show()
 
 
-def plot_confusion_matrix(true_labels, predicted_labels, config, classes=[0, 1, 2, 3, 4]):
+def plot_confusion_matrix(true_labels, predicted_labels, config, classes=[1, 2, 3, 4, 5]):
     plot_local_path = config["plot_local_path"]
     n_edges = config["n_edges"]
     n_epo = config["n_epo"]
@@ -88,7 +89,7 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
     # set the ticks first 
     g.set_xticks(range(5))
     # set the labels 
-    g.set_xticklabels(['0', '1', '2', '3', '4']) 
+    g.set_xticklabels(['1', '2', '3', '4', '5']) 
     # Show plot
     plt.tight_layout()
     plt.grid(True)
@@ -104,8 +105,24 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
     # set the ticks first 
     g.set_xticks(range(5))
     # set the labels 
-    g.set_xticklabels(['0', '1', '2', '3', '4']) 
+    g.set_xticklabels(['1', '2', '3', '4', '5']) 
     # Show plot
     plt.tight_layout()
     plt.grid(True)
     plt.savefig(plot_local_path + "KDE_positive__NPPI_{}_NEpochs_{}.pdf".format(n_edges, n_epo), dpi=200)
+
+
+def plot_node_embed(features, labels, config, feature_type):
+    plot_local_path = config["plot_local_path"]
+    n_neighbors=20 #10 #5
+    min_dist=0.8 #0.99 #0.3
+    metric='correlation'
+    labels = [int(item) + 1 for item in labels]
+    embeddings = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, metric='correlation').fit_transform(features)
+    print("Embeddings shape: ", embeddings.shape)
+    data = {"UMAP1": embeddings[:, 0], "UMAP2": embeddings[:, 1], "Label": labels}
+    df = pd.DataFrame(data)
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, palette="viridis", s=50, alpha=1.0)
+    plt.title("UMAP Visualization of node embeddings from last {} layer".format(feature_type))
+    plt.savefig(plot_local_path + "umap_node_embeddings_{}_{}_{}.pdf".format(n_neighbors, min_dist, feature_type))

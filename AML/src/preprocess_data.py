@@ -31,16 +31,15 @@ def read_files(config):
     '''
     data_local_path = config["data_local_path"]
     n_edges = config["n_edges"]
-    
     print("Probe genes relations")
-    gene_relation_path = "out_links_10000_20_03"
+    gene_relation_path = config["out_links"] #"out_links_10000_20_03"
     relations_probe_ids = pd.read_csv(data_local_path + gene_relation_path, sep=" ", header=None)
     print(relations_probe_ids)
     #return relations_probe_ids
     print("Edges created")
     #relations_probe_ids = ppi
     print("NAIPU and DNAM features and labels")
-    features_data_path = "df_nebit_dnam_features.csv"
+    features_data_path = config["nedbit_dnam_features"] #"df_nebit_dnam_features.csv"
     naipu_dnam_features = pd.read_csv(data_local_path + features_data_path, sep="\t", header=None)
     print(naipu_dnam_features)
     print()
@@ -48,7 +47,7 @@ def read_files(config):
     labels = naipu_dnam_features.iloc[:, -1:]
     print(labels)
     print()
-    out_genes_path = "out_genes_10000_20_03"
+    out_genes_path =  config["out_genes"] #"out_genes_10000_20_03"
     out_genes = pd.read_csv(data_local_path + out_genes_path, sep=" ", header=None)
     print("Out genes NIAPU")
     print(out_genes)

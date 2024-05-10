@@ -29,14 +29,14 @@ plot_local_path = "../plots/"
 
 # neural network parameters
 SEED = 32
-n_epo = 1
+n_epo = 5
 k_folds = 5
-batch_size = 32 #256
+batch_size = 1024
 num_classes = 5
 gene_dim = 39
-hidden_dim = 32
+hidden_dim = 128
 learning_rate = 0.001
-n_edges = 100000 #1500000
+n_edges = 1000000 #1500000
 
 def create_edges():
     print("Probe genes relations")
