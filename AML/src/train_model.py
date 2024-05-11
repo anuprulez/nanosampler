@@ -3,6 +3,7 @@ from torch.nn import Linear, BatchNorm1d, ReLU
 import torch.nn.functional as F
 
 import numpy as np
+import pandas as pd
 
 import sklearn
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
@@ -15,6 +16,28 @@ def create_masks(mapped_node_ids, mask_list):
     mask = mapped_node_ids.index.isin(mask_list)
     return torch.tensor(mask, dtype=torch.bool)
 
+def create_test_masks(mapped_node_ids, mask_list, out_genes):
+    #print("Out genes in test masks")
+    #print(out_genes)
+    gene_names = out_genes.loc[:, 1]
+    gene_ids = out_genes.loc[:, 0]
+    updated_mask_list = list()
+    probes = dict()
+    probe_genes = list()
+    for name in gene_names:
+        p_name = name.split("_")[0]
+        if p_name not in probes:
+            probes[p_name] = 1
+        else:
+            probes[p_name] += 1
+    for m_item in mask_list:
+        m_name = out_genes[out_genes.loc[:, 0] == m_item]
+        pm_name = m_name.values[0][1].split("_")[0]
+        if pm_name in probes and probes[pm_name] == 1:
+            updated_mask_list.append(m_item)
+            probe_genes.append(m_name.values[0][1])
+    mask = mapped_node_ids.index.isin(updated_mask_list)
+    return torch.tensor(mask, dtype=torch.bool), probe_genes
 
 def train(data, optimizer, model, criterion):
     # Clear gradients
@@ -133,7 +156,6 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     tr_loss_epo = list()
     te_acc_epo = list()
     val_acc_epo = list()
-    #mapped_f_name = mapped_f_name[:30]
     lst_mapped_f_name = np.array(mapped_f_name.index)
     complete_rand_index = [item for item in range(len(mapped_f_name.index))]
     tr_index, te_index = train_test_split(complete_rand_index, shuffle=True, test_size=0.33, random_state=42)
@@ -142,7 +164,11 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     print("tr_nodes: ", tr_nodes)
     print("te_nodes: ", te_nodes)
     print("intersection: ", list(set(tr_nodes).intersection(set(te_nodes))))
-    compact_data.test_mask = create_masks(mapped_f_name, te_nodes)
+    compact_data.test_mask, test_probe_genes = create_test_masks(mapped_f_name, te_nodes, out_genes)
+    df_test_probe_genes = pd.DataFrame(test_probe_genes)
+    df_test_probe_genes.to_csv(config["data_local_path"] + "test_probe_genes.csv", index=None)
+    #import sys
+    #sys.exit()
     # loop over epochs
     print("Start epoch training...")
     for epoch in range(n_epo):
@@ -152,7 +178,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
         for fold, (train_index, val_index) in enumerate(kfold.split(tr_nodes)):
             val_node_ids = tr_nodes[val_index]
             train_nodes_ids = tr_nodes[train_index]
-            compact_data.val_mask = create_masks(mapped_f_name, val_node_ids)
+            compact_data.val_mask, _ = create_test_masks(mapped_f_name, val_node_ids, out_genes)
             n_batches = int((len(train_index) + 1) / float(batch_size))
             batch_tr_loss = list()
             # loop over batches
@@ -176,7 +202,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
         val_acc_epo.append(np.mean(val_acc_fold))
         print()
         print("Epoch {}: Training Loss: {}".format(str(epoch+1), str(np.mean(tr_loss_fold))))
-        print("Epoch {}: Val accuracy: {}".format(str(epoch+1), str(np.mean(val_acc_epo))))
+        print("Epoch {}: Val accuracy: {}".format(str(epoch+1), str(np.mean(val_acc_fold))))
         print("Epoch {}: Test accuracy: {}".format(str(epoch+1), str(np.mean(te_acc))))
         print()
     saved_model_path = save_model(model, config)
