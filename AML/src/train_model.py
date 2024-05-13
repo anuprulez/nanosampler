@@ -17,8 +17,6 @@ def create_masks(mapped_node_ids, mask_list):
     return torch.tensor(mask, dtype=torch.bool)
 
 def create_test_masks(mapped_node_ids, mask_list, out_genes):
-    #print("Out genes in test masks")
-    #print(out_genes)
     gene_names = out_genes.loc[:, 1]
     gene_ids = out_genes.loc[:, 0]
     updated_mask_list = list()
@@ -97,6 +95,7 @@ def extract_node_embeddings(model, compact_data, model_activation, config):
     
     plot_gnn.plot_node_embed(pred_embeddings_conv4, true_labels, config, conv_name)
     plot_gnn.plot_node_embed(pred_embeddings_batch_norm4, true_labels, config, "batch_norm4")
+
     print("----------------")
 
 
@@ -127,6 +126,7 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     n_epo = config["n_epo"]
     batch_size = config["batch_size"]
     plot_local_path = config["plot_local_path"]
+    data_local_path = config["data_local_path"]
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
@@ -166,9 +166,8 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     print("intersection: ", list(set(tr_nodes).intersection(set(te_nodes))))
     compact_data.test_mask, test_probe_genes = create_test_masks(mapped_f_name, te_nodes, out_genes)
     df_test_probe_genes = pd.DataFrame(test_probe_genes)
-    df_test_probe_genes.to_csv(config["data_local_path"] + "test_probe_genes.csv", index=None)
-    #import sys
-    #sys.exit()
+    df_test_probe_genes.to_csv(data_local_path + "test_probe_genes.csv", index=None)
+
     # loop over epochs
     print("Start epoch training...")
     for epoch in range(n_epo):
@@ -212,12 +211,11 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     print("CV Val acc after {} epochs: {}".format(str(n_epo), str(np.mean(val_acc_epo))))
     loaded_model = model #load_model(config, saved_model_path, compact_data)
     final_test_acc, pred_labels, true_labels, all_pred = predict_data_test(loaded_model, compact_data)
+    torch.save(pred_labels, data_local_path + 'pred_labels.pt')
     print("CV Test acc after {} epochs: {}".format(n_epo, final_test_acc))
     print("==============")
     extract_node_embeddings(model, compact_data, model_activation, config)
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
     plot_gnn.analyse_ground_truth_pos(loaded_model, compact_data, out_genes, all_pred, config)
-
     
-
     return model, compact_data

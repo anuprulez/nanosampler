@@ -42,6 +42,8 @@ def plot_confusion_matrix(true_labels, predicted_labels, config, classes=[1, 2, 
     n_edges = config["n_edges"]
     n_epo = config["n_epo"]
     # Calculate confusion matrix
+    true_labels = [int(item) + 1 for item in true_labels]
+    predicted_labels = [int(item) + 1 for item in predicted_labels]
     cm = confusion_matrix(true_labels, predicted_labels)
     # Create a heatmap
     plt.figure(figsize=(8, 6))

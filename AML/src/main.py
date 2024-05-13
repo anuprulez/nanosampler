@@ -5,8 +5,8 @@ import xai_explainer
 
 config = {
     "SEED": 32,
-    "n_edges": 1500000,
-    "n_epo": 10,
+    "n_edges": 20000,
+    "n_epo": 3,
     "k_folds": 5,
     "batch_size": 128,
     "num_classes": 5,
@@ -25,7 +25,7 @@ config = {
 def run_training():
     compact_data, feature_n, mapped_f_name, out_genes = preprocess_data.read_files(config)
     trained_model, data = train_model.create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, config)
-    #xai_explainer.gnn_explainer(trained_model, data, config)
+    xai_explainer.gnn_explainer(trained_model, data, config)
 
 
 if __name__ == "__main__":

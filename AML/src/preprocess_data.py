@@ -39,7 +39,7 @@ def read_files(config):
     print("Edges created")
     #relations_probe_ids = ppi
     print("NAIPU and DNAM features and labels")
-    features_data_path = config["nedbit_dnam_features"] #"df_nebit_dnam_features.csv"
+    features_data_path = config["nedbit_dnam_features"]
     naipu_dnam_features = pd.read_csv(data_local_path + features_data_path, sep="\t", header=None)
     print(naipu_dnam_features)
     print()
@@ -47,7 +47,7 @@ def read_files(config):
     labels = naipu_dnam_features.iloc[:, -1:]
     print(labels)
     print()
-    out_genes_path =  config["out_genes"] #"out_genes_10000_20_03"
+    out_genes_path =  config["out_genes"]
     out_genes = pd.read_csv(data_local_path + out_genes_path, sep=" ", header=None)
     print("Out genes NIAPU")
     print(out_genes)
@@ -73,6 +73,7 @@ def read_files(config):
     print("Creating X and Y")
     x = feature_no_labels.iloc[:, 0:]
     y = labels.iloc[:, 0]
+    print(y)
     # shift labels from 1...5 to 0..4
     y = y - 1
     y = torch.tensor(y.to_numpy(), dtype=torch.long)

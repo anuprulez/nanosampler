@@ -18,7 +18,7 @@ def gnn_explainer(model, data, config):
             return_type='log_probs',
         ),
     )
-    node_index = 596
+    node_index = 0
     explanation = explainer(data.x, data.edge_index, index=node_index)
     plt.figure(figsize=(8, 6))
     print(f'Generated explanations in {explanation.available_explanations}')
@@ -26,7 +26,7 @@ def gnn_explainer(model, data, config):
     explanation.visualize_feature_importance(path, top_k=10)
     print(f"Feature importance plot has been saved to '{path}'")
     plt.figure(figsize=(8, 6))
-    path = plot_local_path + 'subgraph.pdf'
+    path = plot_local_path + 'subgraph_{}.pdf'.format(node_index)
     explanation.visualize_graph(path)
     print(f"Subgraph visualization plot has been saved to '{path}'")
     print(explanation.edge_mask, explanation.edge_mask.shape)
