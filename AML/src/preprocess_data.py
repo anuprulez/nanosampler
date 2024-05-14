@@ -69,6 +69,14 @@ def read_files(config):
     print("Mapped links after sampling")
     links_relation_probes = relations_probe_ids.sample(n_edges)
     print(links_relation_probes)
+    print("Add cg01550473_HSPA6 to links")
+    cg01550473_HSPA6 = relations_probe_ids[(relations_probe_ids.loc[:, 0] == 10841) | (relations_probe_ids.loc[:, 1] == 10841)]
+    cg01550473_HSPA6.reset_index(drop=True, inplace=True)
+    links_relation_probes.reset_index(drop=True, inplace=True)
+    print(cg01550473_HSPA6)
+    links_relation_probes = pd.concat([links_relation_probes, cg01550473_HSPA6], axis=0, ignore_index=True)
+    links_relation_probes = links_relation_probes.drop_duplicates()
+    print(links_relation_probes)
     print()
     print("Creating X and Y")
     x = feature_no_labels.iloc[:, 0:]

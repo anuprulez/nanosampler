@@ -5,8 +5,8 @@ import xai_explainer
 
 config = {
     "SEED": 32,
-    "n_edges": 20000,
-    "n_epo": 3,
+    "n_edges": 2000000,
+    "n_epo": 4,
     "k_folds": 5,
     "batch_size": 128,
     "num_classes": 5,
