@@ -1,0 +1,342 @@
+import sys
+import math
+import time
+import random
+from collections import namedtuple, deque
+from typing import List, Optional
+
+# Define structures using namedtuple for immutability or simple classes for mutability
+class Node:
+    def __init__(self, id: int, name: str, class_: int, score: float):
+        self.id = id
+        self.name = name
+        self.class_ = class_
+        self.score = score
+
+class Link:
+    def __init__(self, node1: int, node2: int, weight: float = 0.0):
+        self.node1 = node1
+        self.node2 = node2
+        self.weight = weight
+        self.next = None
+
+# Initialize variables
+nnodi = 0
+nlink = 0
+ngenes = 0
+nseedgenes = 0
+totscore = 0.0
+hash_idgene = []
+ring = []
+count = []
+rank = []
+weightNS = []
+diffus = []
+wdt = 0.0
+alpha = 0.5
+minscore = 0.01
+maxscore = 0.33
+
+# Define functions
+
+def geneRand():
+    return random.random()
+
+def PutInLinkList(testa: Optional[Link], coda: Optional[Link], elemento: Link) -> (Link, Link):
+    elemento.next = None
+    if testa is None:
+        return elemento, elemento
+    else:
+        coda.next = elemento
+        return testa, elemento
+
+def NotExist(testa: Link, n1: int, n2: int) -> int:
+    app = testa
+    while app:
+        if (app.node1 == n1 and app.node2 == n2) or (app.node1 == n2 and app.node2 == n1):
+            return 0
+        app = app.next
+    return 1
+
+def ReadRegularLink(filename: str) -> Link:
+    global nnodi, nlink
+    with open(filename, "r") as fp:
+        newlinkhead, newlinktail = None, None
+        for line in fp:
+            l1, l2 = map(int, line.strip().split())
+            nnodi = max(nnodi, l1, l2)
+            elem = Link(l1, l2)
+            newlinkhead, newlinktail = PutInLinkList(newlinkhead, newlinktail, elem)
+            nlink += 1
+    nnodi += 1
+    return newlinkhead
+
+def ReadRegularGenes(filename: str) -> List[Node]:
+    global ngenes, nseedgenes, totscore, hash_idgene
+    nodes = []
+    with open(filename, "r") as fp:
+        for line in fp:
+            id, gene, score = line.strip().split()
+            id, score = int(id), float(score)
+            nodes.append(Node(id, gene, 1 if score > 0 else 0, score))
+            totscore += score if score > 0 else 0
+            if score > 0:
+                nseedgenes += 1
+    ngenes = len(nodes)
+    hash_idgene = [0] * ngenes
+    for idx, node in enumerate(nodes):
+        hash_idgene[node.id] = idx
+    return nodes
+
+def Connected(link: Link) -> int:
+    field = [0] * nnodi
+    field[0] = 1
+    dimclust = 1
+    change = 1
+    while change:
+        change = 0
+        elem = link
+        while elem:
+            if field[elem.node1] ^ field[elem.node2]:
+                field[elem.node1] = field[elem.node2] = 1
+                dimclust += 1
+                change = 1
+            elem = elem.next
+    return dimclust
+
+def Clusters(link: Link, nc: List[int]) -> List[int]:
+    field = [0] * nnodi
+    nclust = 1
+    field[0] = nclust
+    dimclust = 1
+    sumclust = 0
+    while sumclust < nnodi:
+        change = 1
+        while change:
+            change = 0
+            elem = link
+            while elem:
+                if ((field[elem.node1] == nclust and not field[elem.node2]) or 
+                    (field[elem.node2] == nclust and not field[elem.node1])):
+                    field[elem.node1] = field[elem.node2] = nclust
+                    dimclust += 1
+                    change = 1
+                elem = elem.next
+        sumclust += dimclust
+        if sumclust < nnodi:
+            nclust += 1
+            dimclust = 1
+            i = 0
+            while field[i]:
+                i += 1
+            field[i] = nclust
+    nc[0] = nclust
+    return field
+
+def computeDegree(link: Link) -> List[int]:
+    grado = [0] * nnodi
+    while link:
+        grado[link.node1] += 1
+        grado[link.node2] += 1
+        link = link.next
+    return grado
+
+def netShort(link: Link, genes: List[Node]):
+    global weightNS
+    weightNS = [0.0] * nnodi
+    for i in range(nnodi):
+        if genes[hash_idgene[i]].class_ == 1:
+            weightNS[i] = genes[hash_idgene[i]].score / maxscore
+        elif genes[hash_idgene[i]].class_ == -99:
+            weightNS[i] = 0.0
+        else:
+            weightNS[i] = alpha * minscore / maxscore
+
+    d = [[float('inf')] * nnodi for _ in range(nnodi)]
+    elem = link
+    while elem:
+        if weightNS[elem.node1] + weightNS[elem.node2] > 0:
+            elem.weight = 2.0 / (weightNS[elem.node1] + weightNS[elem.node2])
+        else:
+            elem.weight = float('inf')
+        d[elem.node1][elem.node2] = elem.weight
+        d[elem.node2][elem.node1] = elem.weight
+        elem = elem.next
+
+    for k in range(nnodi):
+        for i in range(nnodi):
+            for j in range(nnodi):
+                if d[i][j] > d[i][k] + d[k][j]:
+                    d[i][j] = d[i][k] + d[k][j]
+
+    weightNS = [sum(1.0 / d[i][j] for j in range(nnodi) if i != j) for i in range(nnodi)]
+
+def netRank(link: Link, genes: List[Node], degree: List[int]):
+    global rank, count, ring
+    ring = [0] * nnodi
+    count = [0] * nnodi
+    rank = [0.0] * nnodi
+
+    elem = link
+    while elem:
+        if genes[hash_idgene[elem.node1]].class_ == 1:
+            ring[elem.node1] = 1
+            count[elem.node1] += 1
+            rank[elem.node1] += 1.0 - (genes[hash_idgene[elem.node2]].score / maxscore)
+        if genes[hash_idgene[elem.node2]].class_ == 1:
+            ring[elem.node2] = 1
+            count[elem.node2] += 1
+            rank[elem.node2] += 1.0 - (genes[hash_idgene[elem.node1]].score / maxscore)
+        elem = elem.next
+
+    for i in range(nnodi):
+        if genes[hash_idgene[i]].class_ == 1:
+            rank[i] = alpha * (1.0 - (genes[hash_idgene[i]].score / maxscore)) + \
+                      (1 - alpha) * rank[i] / count[i]
+
+    nring = 1
+    change = 1
+    while change:
+        change = 0
+        elem = link
+        while elem:
+            if ring[elem.node1] == nring and (ring[elem.node2] == nring + 1 or not ring[elem.node2]):
+                ring[elem.node2] = nring + 1
+                count[elem.node2] += 1
+                rank[elem.node2] += rank[elem.node1] - (nring - 1)
+                change = 1
+            elif ring[elem.node2] == nring and (ring[elem.node1] == nring + 1 or not ring[elem.node1]):
+                ring[elem.node1] = nring + 1
+                count[elem.node1] += 1
+                rank[elem.node1] += rank[elem.node2] - (nring - 1)
+                change = 1
+            elem = elem.next
+        nring += 1
+        sum_rank = sum(rank[i] for i in range(nnodi) if ring[i] == nring)
+        stat = sum(1 for i in range(nnodi) if ring[i] == nring)
+        if stat > 0:
+            print(f"{nring} {sum_rank / stat} {stat}")
+
+def diffusionHeat(link: Link, degree: List[int], fieldnew: List[float], fieldold: List[float]):
+    global diffus
+    diffus = [0.0] * nnodi
+    elem = link
+    while elem:
+        if degree[elem.node2] != 0:
+            diffus[elem.node1] += fieldold[elem.node2] / degree[elem.node2]
+        if degree[elem.node1] != 0:
+            diffus[elem.node2] += fieldold[elem.node1] / degree[elem.node1]
+        elem = elem.next
+
+    for i in range(nnodi):
+        fieldnew[i] = (1 - wdt) * fieldold[i] + diffus[i] * wdt
+
+def diffusionInfo(link: Link, degree: List[int], fieldnew: List[float], fieldold: List[float]):
+    global diffus
+    diffus = [0.0] * nnodi
+    elem = link
+    while elem:
+        diffus[elem.node1] += fieldold[elem.node2]
+        diffus[elem.node2] += fieldold[elem.node1]
+        elem = elem.next
+
+    for i in range(nnodi):
+        fieldnew[i] = (1 - wdt * degree[i]) * fieldold[i] + diffus[i] * wdt
+
+def oneRing(present, ringnew, ringold, step):
+    print(f"nuova versione step {step}")
+    nchanged = 0
+    while present is not None:
+        if ringold[present.node1] == step:
+            ringnew[present.node1] = step
+            if ringold[present.node2] == 0:
+                ringnew[present.node2] = step + 1
+                nchanged += 1
+        if ringold[present.node2] == step:
+            ringnew[present.node2] = step
+            if ringold[present.node1] == 0:
+                ringnew[present.node1] = step + 1
+                nchanged += 1
+        present = present.next
+    
+    # Python equivalent of memcpy
+    ringold[:] = ringnew[:]
+    return nchanged
+
+def covDegree(present, covdeg, ringGene):
+    while present is not None:
+        if ringGene[present.node1] == 1:
+            covdeg[present.node2] += 1
+        elif ringGene[present.node2] == 1:
+            covdeg[present.node1] += 1
+        present = present.next
+
+def main(argv):
+    global wdt
+
+    if len(argv) != 4:
+        print(f"Usage: {argv[0]} filelink filegene fileout")
+        sys.exit(1)
+
+    linklista = ReadRegularLink(argv[1])
+    genes = ReadRegularGenes(argv[2])
+
+    print(f"major cluster {Connected(linklista)} elements over {nnodi}")
+    nc = [0]
+    clusters = Clusters(linklista, nc)
+    print("clusters:")
+    elemClus = [0] * (nc[0] + 1)
+    for i in range(1, nnodi):
+        elemClus[clusters[i]] += 1
+    for i in range(1, nc[0] + 1):
+        print(f"{i} {elemClus[i]}")
+
+    print("compute degree")
+    degree = computeDegree(linklista)
+    for i in range(nnodi):
+        if clusters[i] == 1:
+            print(f"{i} {genes[hash_idgene[i]].name} {degree[i]} {clusters[i]}")
+
+    # Allocation and initialization
+    ring = [0] * nnodi
+    count = [0] * nnodi
+    rank = [0.0] * nnodi
+    weightNS = [0.0] * nnodi
+    fieldHeat = [0.0] * nnodi
+    fieldInfo = [0.0] * nnodi
+    diffus = [0.0] * nnodi
+    app = [0.0] * nnodi
+
+    print("net short:")
+    netShort(linklista, genes)
+
+    print("net rank:")
+    netRank(linklista, genes, degree)
+
+    coeff = nseedgenes / totscore
+    wdt = 0.001
+    step = 263
+    print(f"heat diffusion {wdt} {step}")
+    for i in range(nnodi):
+        if genes[hash_idgene[i]].class_ == 1:
+            fieldHeat[i] = coeff * genes[hash_idgene[i]].score
+    for i in range(step):
+        diffusionHeat(linklista, degree, app, fieldHeat)
+
+    wdt = 0.0001
+    step = 50
+    print(f"info diffusion {wdt} {step}")
+    for i in range(nnodi):
+        if genes[hash_idgene[i]].class_ == 1:
+            fieldInfo[i] = coeff * genes[hash_idgene[i]].score
+    for i in range(step):
+        diffusionInfo(linklista, degree, app, fieldInfo)
+
+    with open(argv[3], "w") as fw:
+        fw.write("name,class,degree,ring,NetRank,NetShort,HeatDiff,InfoDiff\n")
+        for i in range(nnodi):
+            fw.write(f"{genes[hash_idgene[i]].name},{genes[hash_idgene[i]].class_},{degree[i]},"
+                     f"{ring[i]},{rank[i]},{weightNS[i]},{fieldHeat[i]},{fieldInfo[i]}\n")
+
+if __name__ == "__main__":
+    main(sys.argv)
