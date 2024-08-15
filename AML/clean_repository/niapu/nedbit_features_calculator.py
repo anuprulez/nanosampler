@@ -72,6 +72,22 @@ def ReadRegularLink(filename: str) -> Link:
     nnodi += 1
     return newlinkhead
 
+hash_idgene = []
+def createPositiveList(link, genes):
+    newlinkhead = None
+    newlinktail = None
+
+    while link is not None:
+        if genes[hash_idgene[link.node1]].class_number == 1 and genes[hash_idgene[link.node2]].class_number == 1:
+            elem = Link(link.node1, link.node2)
+            #elem.node1 = link.node1
+            #elem.node2 = link.node2
+            newlinkhead, newlinktail = PutInLinkList(newlinkhead, newlinktail, elem)
+        link = link.next
+
+    return newlinkhead
+
+
 def ReadRegularGenes(filename: str) -> List[Node]:
     global ngenes, nseedgenes, totscore, hash_idgene
     nodes = []
@@ -105,7 +121,7 @@ def Connected(link: Link) -> int:
             elem = elem.next
     return dimclust
 
-def Clusters(link: Link, nc: List[int]) -> List[int]:
+def Clusters(link, nc):
     field = [0] * nnodi
     nclust = 1
     field[0] = nclust
@@ -131,7 +147,53 @@ def Clusters(link: Link, nc: List[int]) -> List[int]:
             while field[i]:
                 i += 1
             field[i] = nclust
-    nc[0] = nclust
+    #nc[0] = nclust
+    nc = nclust
+    return field
+
+def ClustersSeedGenes(link, genes, nc):
+    field = [0] * nnodi  # Initialize the field array with zeros
+    nclust = 1
+    i = 0
+
+    # Find the first gene with class == 1
+    while genes[hash_idgene[i]].class_number != 1:
+        i += 1
+
+    field[i] = nclust
+    dimclust = 1
+    sumclust = 0
+
+    while True:
+        change = True
+        while change:
+            change = False
+            elem = link
+            while elem is not None:
+                if ((field[elem.node1] == nclust and field[elem.node2] == 0) or
+                    (field[elem.node2] == nclust and field[elem.node1] == 0)):
+                    field[elem.node1] = nclust
+                    field[elem.node2] = nclust
+                    dimclust += 1
+                    change = True
+                elem = elem.next
+
+        sumclust += dimclust
+        nclust += 1
+        dimclust = 1
+        i = 0
+
+        # Find the next unclustered gene with class == 1
+        while i < nnodi and (field[i] != 0 or genes[hash_idgene[i]].class_number != 1):
+            i += 1
+
+        if i < nnodi:
+            field[i] = nclust
+        else:
+            break
+
+    #nc[0] = nclust
+    nc = nclust
     return field
 
 def computeDegree(link: Link) -> List[int]:
@@ -354,13 +416,14 @@ def netRank(link, genes, degree):
         change = 0
         while elem:
             if ring[elem.node1] == nring:
-                if ring[elem.node2] == nring + 1 or ring[elem.node2] == 0:
+                #if ring[elem.node2] == nring + 1 or ring[elem.node2] == 0:
+                if ((ring[elem.node2] == nring + 1) or (ring[elem.node2] == 0)):
                     ring[elem.node2] = nring + 1
                     count[elem.node2] += 1
                     rank[elem.node2] += rank[elem.node1] - (nring - 1)
                     change = 1
             elif ring[elem.node2] == nring:
-                if ring[elem.node1] == nring + 1 or ring[elem.node1] == 0:
+                if ((ring[elem.node1] == nring + 1) or (ring[elem.node1] == 0)):
                     ring[elem.node1] = nring + 1
                     count[elem.node1] += 1
                     rank[elem.node1] += rank[elem.node2] - (nring - 1)
@@ -484,7 +547,173 @@ def covDegree(present, covdeg, ringGene):
             covdeg[present.node1] += 1
         present = present.next
 
-def main(argv):
+
+import sys
+import time
+import random
+import numpy as np
+from math import sqrt
+
+
+nARG = 3
+ARGfileLink = 1
+ARGfileGene = 2
+ARGfileOut = 3
+
+
+def main():
+    if len(sys.argv) != nARG + 1:
+        sys.stderr.write(f"[{sys._getframe().f_code.co_name}]: Uso: {sys.argv[0]} filelink filegene fileout\n")
+        sys.exit(1)
+
+    # Seed random generator
+    '''if not FIXEDSEED:
+        if UNIX:
+            seed = int(time.time())
+            random.seed(seed)
+            startseed = seed
+            print(f"UNIX-SEME = {startseed}")
+        else:
+            seed = int(time.time())
+            random.seed(seed)
+            startseed = seed
+            print(f"WINDOWS-SEME = {startseed}")'''
+
+    linklista = ReadRegularLink(sys.argv[ARGfileLink])
+    genes = ReadRegularGenes(sys.argv[ARGfileGene])
+
+    # Controllo connessione e stampa geni isolati
+    print(f"major cluster {Connected(linklista)} elements over {nnodi}")
+    nc = 0
+    clusters = Clusters(linklista, nc)
+    nc = len(clusters)
+    elemClus = np.zeros(nc + 1, dtype=int)
+    for i in range(1, nnodi):
+        elemClus[clusters[i]] += 1
+
+    print("clusters:")
+    for i in range(1, nc + 1):
+        print(f"{i} {elemClus[i]}")
+
+    print("singoli:")
+    for i in range(nnodi):
+        if clusters[i] != 1:
+            print(f"{genes[i].name} {genes[i].class_number}")
+    
+    # Blocco per il calcolo del grado e della clusterizzazione del sottografo dei seed genes
+    print("compute seed subgraph:")
+    linkseed = createPositiveList(linklista, genes)
+    print("clusterization of seed subgraph:")
+    clusters = ClustersSeedGenes(linkseed, genes, nc)
+    nc = len(clusters)
+    elemClus = np.zeros(nc + 1, dtype=int)
+    for i in range(1, nnodi):
+        elemClus[clusters[i]] += 1
+    for i in range(1, nc + 1):
+        print(f"{i} {elemClus[i]}")
+
+    print("compute degree of seed subgraph:")
+    stat = 0
+    sumdeg = 0
+    vardeg = 0
+    degree = computeDegree(linkseed)
+    for i in range(nnodi):
+        if genes[hash_idgene[i]].class_number == 1:
+            print(f"{i} {genes[hash_idgene[i]].name} {degree[i]} {clusters[i]}")
+    
+    print("Parametri del sistema:")
+    print(f"          file link:   {sys.argv[ARGfileLink]}")
+    print(f"             n link:   {nlink}")
+    print(f"          file geni:   {sys.argv[ARGfileGene]}")
+    print(f"             n geni:   {ngenes}")
+    print(f"        n geni seed:   {nseedgenes}")
+    
+    # Controllo connessione
+    print(f"major cluster {Connected(linklista)} elements over {nnodi}")
+    nc = []
+    clusters = Clusters(linklista, nc)
+    nc = len(clusters)
+    elemClus = np.zeros(nc + 1, dtype=int)
+    for i in range(1, nnodi):
+        elemClus[clusters[i]] += 1
+    
+    print("clusters:")
+    for i in range(1, nc + 1):
+        print(f"{i} {elemClus[i]}")
+    
+    print("compute degree")
+    stat = 0
+    sumdeg = 0
+    vardeg = 0
+    degree = computeDegree(linklista)
+    for i in range(nnodi):
+        if clusters[i] == 1:
+            sumdeg += degree[i]
+            vardeg += degree[i] * degree[i]
+            stat += 1
+        else:
+            genes[hash_idgene[i]].class_number = -99
+            print(f"{i} {genes[hash_idgene[i]].name} {genes[hash_idgene[i]].class_number}")
+    
+    sumdeg /= float(stat)
+    vardeg = sqrt((vardeg - sumdeg * sumdeg * nnodi) / (nnodi - 1.0))
+    print(f"nodes {stat}, average degree: {sumdeg}, standard deviation: {vardeg}")
+    
+    # allocate memory
+    ring = np.zeros(nnodi, dtype=int)
+    count = np.zeros(nnodi, dtype=int)
+    rank = np.zeros(nnodi, dtype=float)
+    weightNS = np.zeros(nnodi, dtype=float)
+    fieldHeat = np.zeros(nnodi, dtype=float)
+    fieldInfo = np.zeros(nnodi, dtype=float)
+    diffus = np.zeros(nnodi, dtype=float)
+    app = np.zeros(nnodi, dtype=float)
+    
+    print("net short:")
+    netShort(linklista, genes)
+    
+    print("net rank:")
+    netRank(linklista, genes, degree)
+    
+    coeff = float(nseedgenes) / float(totscore)
+    wdt = 0.001
+    step = 263
+    print(f"heat diffusion {wdt} {step}")
+    fieldHeat.fill(0)
+    app.fill(0)
+    for i in range(nnodi):
+        if genes[hash_idgene[i]].class_number == 1:
+            fieldHeat[i] = coeff * genes[hash_idgene[i]].score
+    
+    for i in range(step):
+        diffusionHeat(linklista, degree, app, fieldHeat)
+    
+    wdt = 0.0001
+    step = 50
+    print(f"info diffusion {wdt} {step}")
+    fieldInfo.fill(0)
+    app.fill(0)
+    for i in range(nnodi):
+        if genes[hash_idgene[i]].class_number == 1:
+            fieldInfo[i] = coeff * genes[hash_idgene[i]].score
+    
+    for i in range(step):
+        diffusionInfo(linklista, degree, app, fieldInfo)
+    
+    with open(sys.argv[ARGfileOut], "w") as fw:
+        fw.write("name,class,degree,ring,NetRank,NetShort,HeatDiff,InfoDiff\n")
+        for i in range(nnodi):
+            fw.write(f"{genes[hash_idgene[i]].name},{genes[hash_idgene[i]].class_number},{degree[i]},{ring[i]},{rank[i]},{weightNS[i]},{fieldHeat[i]},{fieldInfo[i]}\n")
+    
+    # No need for explicit free as in C, Python handles memory management
+    
+    return 0
+
+if __name__ == "__main__":
+    main()
+
+
+'''def main(argv):
     global wdt
 
     if len(argv) != 4:
@@ -501,6 +730,7 @@ def main(argv):
     elemClus = [0] * (nc[0] + 1)
     for i in range(1, nnodi):
         elemClus[clusters[i]] += 1
+
     for i in range(1, nc[0] + 1):
         print(f"{i} {elemClus[i]}")
 
@@ -553,4 +783,4 @@ def main(argv):
                      f"{ring[i]},{rank[i]},{weightNS[i]},{fieldHeat[i]},{fieldInfo[i]}\n")
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main(sys.argv)'''
